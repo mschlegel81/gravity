@@ -3,3 +3,5 @@
 *.history*
 /lib/*
 /backup/*
+*.log
+/burnProject.lps

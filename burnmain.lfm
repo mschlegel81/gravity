@@ -1,0 +1,31 @@
+object BurnForm: TBurnForm
+  Left = 1
+  Height = 400
+  Top = 145
+  Width = 400
+  Caption = 'BurnForm'
+  ClientHeight = 400
+  ClientWidth = 400
+  OnClose = FormClose
+  OnCloseQuery = FormCloseQuery
+  OnCreate = FormCreate
+  OnResize = FormResize
+  Position = poScreenCenter
+  LCLVersion = '2.0.12.0'
+  object Image1: TImage
+    Left = 0
+    Height = 400
+    Top = 0
+    Width = 400
+    Align = alClient
+    OnClick = Image1Click
+    Proportional = True
+    Stretch = True
+  end
+  object IdleTimer1: TIdleTimer
+    Interval = 40
+    OnTimer = IdleTimer1Timer
+    Left = 236
+    Top = 122
+  end
+end

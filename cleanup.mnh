@@ -1,0 +1,6 @@
+main->begin
+  local recreatable:=allFiles('.','*.history').map((s)->s.changeFileExt('.txt')).intersect(
+                     allFiles('.','*.exe'    ).map((s)->s.changeFileExt('.txt')));
+  local existing   :=allFiles('.','*.txt');
+  existing.intersect(recreatable).sort.agg((f)->log('Deleting ',f,deleteFile(f) ? ' o.k.' : ' FAILED'));
+end;

@@ -1,0 +1,5 @@
+*.exe
+*.txt
+*.history*
+/lib/*
+/backup/*

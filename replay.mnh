@@ -1,0 +1,54 @@
+replay(filename)->begin
+  local bytesRead:=0;
+  local frames:=0;
+  local lastBytesRead:=0;
+  local lastFrames:=0;
+  local lastOutputTime:=0;
+
+  local doLog:=(suffix)->begin
+    log('Reading @',round((frames   -lastFrames   )/(scriptTime-lastOutputTime)),'fps / ',
+                    round((bytesRead-lastBytesRead)/(scriptTime-lastOutputTime)/1024),'kbps; (',frames,'frames /',round(bytesRead/1024²),'MiB)',suffix);
+    lastOutputTime:=scriptTime;
+    lastFrames:=frames;
+    lastBytesRead:=bytesRead;
+  end;
+
+  fileLineIterator(filename)
+  .pMap((line)->begin
+    local data:=try(::interpret,[line]);
+    data.isVoid ? void : [line.byteLength,[data[1]*(1/255),data[0]]];
+  end)
+  .agg((d)->begin
+    frames+=1;
+    bytesRead+=d[0];
+    scriptTime>lastOutputTime+1
+    ? doLog('')
+    : void;
+
+    plotRasterImage@(d[1]);
+    addAnimationFrame;
+    postDisplay;
+  end);
+  doLog(' - EOF');
+  callMemoryCleaner;
+end;
+
+//*Replay with an ask dialog
+main->begin
+  assertGuiStarted;
+  ask('Which file to replay?',allFiles('.','grav*.txt').map((n)->relativeFileName(myPath,n).systemSpecificFilename)).replay;
+end;
+
+//*List files with respective line counts
+main('list')->
+allFiles('.','grav*.txt').pMap((l)->begin
+  local k:=0;
+  fileLineIterator(l).each(l,k+=1).trailing;
+  join([l,k],"\t");
+end).join("\n").print;
+
+//*Replay a specific file
+main(filename)->begin
+  assertGuiStarted;
+  replay(filename);
+end;

@@ -1,0 +1,38 @@
+#!C:\bin\mnh.exe -quiet -convertPrintToLog -logDateFmt hh:mm:ss.zzz -logLocationLength 20 +log stdOut(2)
+wt:='C:\Users\mschl\AppData\Local\Microsoft\WindowsApps\wt.exe';// -d %CD% -p "grav 32" cmd /c grav32.exe'
+
+parameters(execName:String,closeAfter:Boolean)->['-d',execName.extractFileDirectory.systemSpecificFilename,
+                              '-p','"'&execName&'"',
+                              'cmd',closeAfter ? '/c' : '/k',execName];
+runningGravTasks->getTaskInfo.map((i)->i['commandLine']).filter((c)->c.matches('grav\d+\.exe')).replace('cmd /c ','').trim.expandedFileName.systemSpecificFilename.toSet;
+
+start(closeAfter:Boolean)->begin
+  local alreadyRunning:=runningGravTasks;
+  local startedCount:=0;
+  allFiles('.','grav*.exe')
+  .filter((f)->!matches(f,'highTolerance'))
+  .map(::expandedFileName)
+  .sort
+  .map((n)->n.extractFileNameOnly.clean(['0'..'9'],'').softCast=>n)
+  .sort
+  .getInner(1)
+  .map(::systemSpecificFilename)
+  .reverseList
+  .each(execName,execName in alreadyRunning
+                 ? log('          ',execName,' is already running')
+                 : begin
+                     log('Starting: ',execName);
+                     assert(exec(wt,parameters(execName,closeAfter))[1]=0);
+                     startedCount+=1;
+                     while(execName not in (alreadyRunning:=runningGravTasks),sleep(0.1));
+                   end);
+  log(startedCount,' tasks started');
+  log(alreadyRunning.size,' tasks are running: ',join("\n  "&sort(alreadyRunning)));
+end;
+
+//*Start and close after finish
+main->start(true);
+
+//*Start and keep open
+main('k')->start(false);
+

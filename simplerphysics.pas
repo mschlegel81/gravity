@@ -23,6 +23,7 @@ TYPE
       value:T_value;
       replaying:boolean;
       handle:TFileStream;
+      logHandle:TextFile;
     public
       CONSTRUCTOR create;
       DESTRUCTOR destroy;
@@ -35,10 +36,18 @@ CONST
   zeroVec:T_2dVector=(0,0);
 
 FUNCTION filename_txt:string;
+FUNCTION hasCmdLineParameter(CONST s:string):boolean;
 IMPLEMENTATION
 USES sysutils;
 VAR cachedAttraction:array [-SYS_SIZE+1..SYS_SIZE-1,-SYS_SIZE+1..SYS_SIZE-1] of T_2dVector;
     attractionInitialized:boolean=false;
+
+FUNCTION hasCmdLineParameter(CONST s:string):boolean;
+  VAR i:longint;
+  begin
+    for i:=1 to ParamCount do if ParamStr(i)=s then exit(true);
+    result:=false;
+  end;
 
 FUNCTION filename:string;
   begin
@@ -139,14 +148,22 @@ PROCEDURE ensureAttractionFactors;
 CONSTRUCTOR T_cellSystem.create;
   VAR i,j:longint;
       p:T_2dVector;
+      massFactor:double;
   begin
-    if fileExists(fileName) and not((ParamCount>=1) and (ParamStr(1)='restart')) then begin
+    assign(logHandle,ChangeFileExt(paramstr(0),'.log'));
+    rewrite(logHandle);
+    Close(logHandle);
+
+    if fileExists(fileName) and not(hasCmdLineParameter('restart')) then begin
       handle:=TFileStream.create(fileName,fmOpenReadWrite);
       handle.Seek(0,soBeginning);
       replaying:=true;
     end else begin
+      if      hasCmdLineParameter('ld') then massFactor:=0.1
+      else if hasCmdLineParameter('hd') then massFactor:=  1
+      else                                   massFactor:=  10;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
-        value[i,j].mass:=0.1*(0.95+0.05*random);
+        value[i,j].mass:=massFactor*(0.95+0.05*random);
         repeat
           p[0]:=1-2*random;
           p[1]:=1-2*random;
@@ -274,13 +291,21 @@ FUNCTION T_cellSystem.doMacroTimeStep:boolean;
       j:=handle.position;
       i:=handle.read(nextValue,sizeOf(value));
       if i<>sizeOf(value) then begin
-        writeln('Tried to read ',sizeOf(value),' bytes @',handle.Position,' but read ',i);
+        append(logHandle);
+        writeln(logHandle,'Tried to read ',sizeOf(value),' bytes @',handle.Position,' but read ',i);
+        writeln(          'Tried to read ',sizeOf(value),' bytes @',handle.Position,' but read ',i);
+        close(logHandle);
         replaying:=false;
+        if hasCmdLineParameter('replay')
+        then exit(false);
       end else begin
         value:=nextValue;
         m:=0;
         for ti:=0 to SYS_SIZE-1 do for tj:=0 to SYS_SIZE-1 do m+=value[ti,tj].mass;
-        writeln('Replaying ',timestepIndex,' @',handle.position,'; mass=',m:0:6);
+        append(logHandle);
+        writeln(logHandle,'Replaying ',timestepIndex,' @',handle.position,'; mass=',m:0:6);
+        writeln(          'Replaying ',timestepIndex,' @',handle.position,'; mass=',m:0:6);
+        close(logHandle);
       end;
       handle.Seek(j+i,soBeginning);
       exit(true);
@@ -338,8 +363,10 @@ FUNCTION T_cellSystem.doMacroTimeStep:boolean;
     m:=0;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do m+=value[i,j].mass;
 
-
-    writeln('Step done: ',(now-start)*24*60*60:0:5,'s; ',subStepsToTake,' sub steps; saving ',handle.position div sizeOf(value),' @',handle.position,'; mass=',m:0:6);
+    append(logHandle);
+    writeln(logHandle,'Step done: ',(now-start)*24*60*60:0:5,'s; ',subStepsToTake,' sub steps; saving ',handle.position div sizeOf(value),' @',handle.position,'; mass=',m:0:6);
+    writeln(          'Step done: ',(now-start)*24*60*60:0:5,'s; ',subStepsToTake,' sub steps; saving ',handle.position div sizeOf(value),' @',handle.position,'; mass=',m:0:6);
+    close(logHandle);
     if not(replaying) then handle.write(value,sizeOf(value));
   end;
 

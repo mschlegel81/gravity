@@ -1,38 +1,82 @@
 #!C:\bin\mnh.exe -quiet -convertPrintToLog -logDateFmt hh:mm:ss.zzz -logLocationLength 20 +log stdOut(2)
 wt:='C:\Users\mschl\AppData\Local\Microsoft\WindowsApps\wt.exe';// -d %CD% -p "grav 32" cmd /c grav32.exe'
 
-parameters(execName:String,closeAfter:Boolean)->['-d',execName.extractFileDirectory.systemSpecificFilename,
+parameters(execName:String,closeAfter:Boolean,replay:Boolean)->['-d',execName.extractFileDirectory.systemSpecificFilename,
                               '-p','"'&execName&'"',
-                              'cmd',closeAfter ? '/c' : '/k',execName];
-runningGravTasks->getTaskInfo.map((i)->i['commandLine']).filter((c)->c.matches('grav\d+\.exe')).replace('cmd /c ','').trim.expandedFileName.systemSpecificFilename.toSet;
+                              'cmd',closeAfter ? '/c' : '/k',execName,
+                              execName.matches('low_density') ? 'ld' :
+                              execName.matches('high_density') ? 'hd' : void,
+                              replay ? 'replay' : void];
+gravExes:=allFiles('.','grav*.exe').map(::expandedFileName).map(::systemSpecificFilename);
+runningGravTasks->getTaskInfo.map((i)->gravExes[!pos(gravExes,i['commandLine']).isInfinite][0]).toSet;
 
-start(closeAfter:Boolean)->begin
+ //.filter((c)->c.matches('grav\d+\.exe')).trim.expandedFileName.systemSpecificFilename.toSet;
+
+start(closeAfter:Boolean,replay:Boolean)->begin
   local alreadyRunning:=runningGravTasks;
   local startedCount:=0;
-  allFiles('.','grav*.exe')
+  gravExes
   .filter((f)->!matches(f,'highTolerance'))
-  .map(::expandedFileName)
   .sort
   .map((n)->n.extractFileNameOnly.clean(['0'..'9'],'').softCast=>n)
   .sort
   .getInner(1)
-  .map(::systemSpecificFilename)
   .reverseList
   .each(execName,execName in alreadyRunning
                  ? log('          ',execName,' is already running')
                  : begin
                      log('Starting: ',execName);
-                     assert(exec(wt,parameters(execName,closeAfter))[1]=0);
+                     assert(exec(wt,parameters(execName,closeAfter,replay))[1]=0);
                      startedCount+=1;
-                     while(execName not in (alreadyRunning:=runningGravTasks),sleep(0.1));
+                     while(execName not in (alreadyRunning:=runningGravTasks),
+                       begin
+                         note('Already running: ',join("\n  "&sort(alreadyRunning)));
+                         sleep(0.1);
+                       end);
                    end);
   log(startedCount,' tasks started');
+  alreadyRunning:=getTaskInfo.map((i)->i['commandLine']).filter((cl)->!pos(gravExes,cl).isInfinite.agg(and));
   log(alreadyRunning.size,' tasks are running: ',join("\n  "&sort(alreadyRunning)));
 end;
 
 //*Start and close after finish
-main->start(true);
+main->start(true,false);
 
 //*Start and keep open
-main('k')->start(false);
+main('k')->start(false,false);
+
+//*Start in replay mode
+main('r')->start(false,true);
+
+main('graph')->begin
+  assertGuiStarted;
+  local masses:=gravExes.pMap((l)->l.changeFileExt('.log')).map((f)->begin
+    local m:=f.fileLines.split("mass=").getInner(1).trim.softCast;
+    m.size=0
+    ? void
+    : [f.extractFileNameOnly.clean(['0'..'9'],'').softCast,
+       f.extractFileDirectory.extractFileNameOnly,
+       m];
+  end);
+
+  local sizes:=masses.getInner(0).unique;
+  local densities:=masses.getInner(1).unique;
+  sizes.each(s,begin
+    local data:=masses.sort.filter((m)->m[0]=s).getInner(2);
+    setOptions(["x0"=>-1,"x1"=>1,"y0"=>-1,"y1"=>1,"fontsize"=>10,"preserveAspect"=>false,"autoscaleX"=>true,"autoscaleY"=>true,"logscaleX"=>false,"logscaleY"=>true,"autoscaleFactor"=>1,"axisStyleX"=>7,"axisStyleY"=>7].toMap);
+    plot();
+    drawTextAbsolute(1,1,'System size='&s,'TR');
+    data.each(row,addPlot(row));
+    addAnimationFrame;
+  end);
+  densities.each(d,begin
+    local data:=masses.sort.filter((m)->m[1]=d).getInner(2);
+    setOptions(["x0"=>-1,"x1"=>1,"y0"=>-1,"y1"=>1,"fontsize"=>10,"preserveAspect"=>false,"autoscaleX"=>true,"autoscaleY"=>true,"logscaleX"=>false,"logscaleY"=>true,"autoscaleFactor"=>1,"axisStyleX"=>7,"axisStyleY"=>7].toMap);
+    plot();
+    drawTextAbsolute(1,1,d,'TR');
+    data.each(row,addPlot(row));
+    addAnimationFrame;
+  end);
+end;
+
 

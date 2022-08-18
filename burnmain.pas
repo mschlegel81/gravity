@@ -44,26 +44,23 @@ FUNCTION calcThread(p:pointer):ptrint;
       framesInQueue:longint=-1;
       picture: P_rgbPicture;
       handle:  textFile;
-      handleOpen:boolean=true;
-      replaying: Boolean;
+      replayedBefore: Boolean=true;
+      replaying     : Boolean=true;
   begin
     randomize;
     assign(handle,filename_txt);
     rewrite(handle);
     queue:=P_animation(p);
     sys.create;
-    while not(closing) do begin
+    while not(closing) and not(not(replaying) and replayedBefore and hasCmdLineParameter('replay')) do begin
+      replayedBefore:=replaying;
       replaying:=sys.doMacroTimeStep;
       picture:=sys.getPicture(BurnForm.width,BurnForm.height);
       writeln(handle,picture^.toString);
-
       framesInQueue:=queue^.addFrame(picture);
-      if not(replaying) and (framesInQueue>aheadTarget) then sleep(framesInQueue-aheadTarget);
+      if not(replaying) and not(closing) and (framesInQueue>aheadTarget) then sleep(framesInQueue-aheadTarget);
     end;
-    if handleOpen then begin
-      close(handle);
-      handleOpen:=false;
-    end;
+    close(handle);
     sys.destroy;
     result:=0;
     threadRunning:=false;

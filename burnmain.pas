@@ -61,18 +61,19 @@ FUNCTION calcThread(p:pointer):ptrint;
       end;
       animStream:=TFileStream.create(fileName_anim,fmOpenReadWrite);
       animStream.Seek(0,soBeginning);
+      append(logHandle);
       repeat
         new(picture,create(SYS_SIZE,SYS_SIZE));
         replaying:=picture^.load(animStream);
         if replaying then begin
-          append(logHandle);
           writeln(logHandle,'Replay; mass=',picture^.mass:0:6);
           writeln(          'Replay; mass=',picture^.mass:0:6);
-          close(logHandle);
-          queue^.addFrame(picture);
+          writeln(handle,picture^.toString);
+          framesInQueue:=queue^.addFrame(picture);
           inc(calcFrameCount);
         end else dispose(picture,destroy);
       until not(replaying);
+      close(logHandle);
     end else begin
       animStream:=TFileStream.create(fileName_anim,fmCreate);
       animStream.Seek(0,soBeginning);
@@ -85,6 +86,7 @@ FUNCTION calcThread(p:pointer):ptrint;
       writeln(handle,picture^.toString);
       framesInQueue:=queue^.addFrame(picture);
       inc(calcFrameCount);
+      if framesInQueue>aheadTarget then sleep(framesInQueue-aheadTarget);
     end;
     close(handle);
     animStream.destroy;
@@ -92,6 +94,7 @@ FUNCTION calcThread(p:pointer):ptrint;
     sys.destroy;
     result:=0;
     threadRunning:=false;
+    writeln('Calculation thread stopped');
   end;
 
 PROCEDURE TBurnForm.FormCreate(Sender: TObject);

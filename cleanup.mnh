@@ -1,6 +1,15 @@
 main->begin
-  local recreatable:=allFiles('.','*.history').map((s)->s.changeFileExt('.txt')).intersect(
-                     allFiles('.','*.exe'    ).map((s)->s.changeFileExt('.txt')));
-  local existing   :=allFiles('.','*.txt');
-  existing.intersect(recreatable).sort.agg((f)->log('Deleting ',f,deleteFile(f) ? ' o.k.' : ' FAILED'));
+  local recreatable:=intersect(
+                     allFiles('.','*.anim').map((s)->s.changeFileExt('')),
+                     allFiles('.','*.dump').map((s)->s.changeFileExt('')),
+                     allFiles('.','*.exe' ).map((s)->s.changeFileExt('')));
+  local existing   :=allFiles('.','*.txt').union(allFiles('.','*.log'));
+  local freedBytes:=0;
+  local freedCount:=0;
+  existing
+  .sort
+  .filter((f)->f.changeFileExt('') in recreatable)
+  .map((f)->[f=>f.fileStats[2]])
+  .agg((f)->log('Deleting ',f[0],deleteFile(f[0]) ? begin freedCount+=1; freedBytes+=f[1]; ' o.k.' end : ' FAILED'));
+  log(floor(freedBytes/1024),'kB in ',freedCount,' files freed');
 end;

@@ -19,16 +19,16 @@ start(closeAfter:Boolean,replay:Boolean)->begin
   .map((n)->n.extractFileNameOnly.clean(['0'..'9'],'').softCast=>n)
   .sort
   .getInner(1)
-  .reverseList
   .each(execName,execName in alreadyRunning
                  ? log('          ',execName,' is already running')
                  : begin
                      log('Starting: ',execName);
                      assert(exec(wt,parameters(execName,closeAfter,replay))[1]=0);
                      startedCount+=1;
-                     while(execName not in (alreadyRunning:=runningGravTasks),
+                     local load:=100;
+                     while((load:=getCPULoadPercentage)>80 OR execName not in (alreadyRunning:=runningGravTasks),
                        begin
-                         note('Already running: ',join("\n  "&sort(alreadyRunning)));
+                         note('Already running: ',join("\n  "&sort(alreadyRunning)),"\nCPU load=",load);
                          sleep(0.1);
                        end);
                    end);

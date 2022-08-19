@@ -6,7 +6,7 @@ INTERFACE
 USES basicGraphics,serializationUtil;
 
 CONST
-  SYMMETRIC_CONTINUATION=4096 div SYS_SIZE;
+  SYMMETRIC_CONTINUATION=32;//4096 div SYS_SIZE;
   dt             =0.05;
   GRID_SIZE      =1;
   MAX_ACCELERATION_RANGE=GRID_SIZE*0.5;
@@ -66,7 +66,7 @@ FUNCTION fileName_anim:string;
 
 FUNCTION fileName_dump:string;
   begin
-    result:='grav'+intToStr(SYS_SIZE)+'.history';
+    result:='grav'+intToStr(SYS_SIZE)+'.dump';
   end;
 
 FUNCTION filename_txt:string;
@@ -116,18 +116,20 @@ PROCEDURE ensureAttractionFactors;
         n,i,j:longint;
     begin
       distance:=x*x+y*y;
-      if      distance<sqr( 5) then n:=4
-      else if distance<sqr(10) then n:=3
-      else if distance<sqr(20) then n:=2
-      else if distance<sqr(40) then n:=1
-      else                          n:=0;
+      if      distance<=sqr( 2) then n:=4
+      else if distance<=sqr( 4) then n:=3
+      else if distance<=sqr( 8) then n:=2
+      else if distance<=sqr(16) then n:=1
+      else                           n:=0;
 
       result:=zeroVec;
       for i:=0 to n do for j:=0 to n do
         result+=straightAttraction(x+GAUSS_LEGENDRE_WEIGHT[n,i].d,
-                                  y+GAUSS_LEGENDRE_WEIGHT[n,j].d)*
-                                   (GAUSS_LEGENDRE_WEIGHT[n,i].w*
-                                    GAUSS_LEGENDRE_WEIGHT[n,j].w);
+                                   y+GAUSS_LEGENDRE_WEIGHT[n,j].d)*
+                                    (GAUSS_LEGENDRE_WEIGHT[n,i].w*
+                                     GAUSS_LEGENDRE_WEIGHT[n,j].w);
+
+      if distance>SYS_SIZE*SYS_SIZE then result*=exp(-0.5*distance*(1/SYS_SIZE*SYS_SIZE));
     end;
 
   VAR ix,iy:longint;
@@ -173,12 +175,13 @@ CONSTRUCTOR T_cellSystem.create;
     else if hasCmdLineParameter(PARAM_HIGH_DENSITY) then massFactor:=  1
     else                                                 massFactor:=  10;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
-      value[i,j].mass:=massFactor*(0.95+0.05*random);
-      repeat
-        p[0]:=1-2*random;
-        p[1]:=1-2*random;
-      until p[0]*p[0]+p[1]*p[1]<1;
-      value[i,j].p:=p*0*value[i,j].mass;
+      value[i,j].mass:=massFactor+0.01*random;
+      //repeat
+      //  p[0]:=1-2*random;
+      //  p[1]:=1-2*random;
+      //until p[0]*p[0]+p[1]*p[1]<1;
+      //value[i,j].p:=p*value[i,j].mass;
+      value[i,j].p:=zeroVec;
     end;
   end;
 
@@ -292,34 +295,9 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
       start:double;
 
   begin
-    start:=now;
-    //timeStepIndex:=handle.position div sizeOf(value);
-    //if replaying then begin
-    //  j:=handle.position;
-    //  i:=handle.read(nextValue,sizeOf(value));
-    //  if i<>sizeOf(value) then begin
-    //    append(logHandle);
-    //    writeln(logHandle,'Tried to read ',sizeOf(value),' bytes @',handle.position,' but read ',i);
-    //    writeln(          'Tried to read ',sizeOf(value),' bytes @',handle.position,' but read ',i);
-    //    close(logHandle);
-    //    replaying:=false;
-    //    if hasCmdLineParameter('replay')
-    //    then exit(false);
-    //  end else begin
-    //    value:=nextValue;
-    //    m:=0;
-    //    for ti:=0 to SYS_SIZE-1 do for tj:=0 to SYS_SIZE-1 do m+=value[ti,tj].mass;
-    //    append(logHandle);
-    //    writeln(logHandle,'Replaying ',timeStepIndex,' @',handle.position,'; mass=',m:0:6);
-    //    writeln(          'Replaying ',timeStepIndex,' @',handle.position,'; mass=',m:0:6);
-    //    close(logHandle);
-    //  end;
-    //  handle.Seek(j+i,soBeginning);
-    //  exit(true);
-    //end;
-    result:=false;
     ensureAttractionFactors();
-
+    start:=now;
+    result:=false;
     modifyVelocities;
 
     resetAcceleration;

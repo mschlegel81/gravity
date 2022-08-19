@@ -6,3 +6,4 @@
 *.log
 /burnProject.lps
 *.anim
+*.dump

@@ -3,7 +3,7 @@ UNIT simplerPhysics;
 {$mode objfpc}{$H+}
 
 INTERFACE
-USES basicGraphics,Classes;
+USES basicGraphics,serializationUtil;
 
 CONST
   SYMMETRIC_CONTINUATION=4096 div SYS_SIZE;
@@ -11,32 +11,42 @@ CONST
   GRID_SIZE      =1;
   MAX_ACCELERATION_RANGE=GRID_SIZE*0.5;
 
+  PARAM_RESTART='restart';
+  PARAM_REPLAY='replay';
+  PARAM_LOW_DENSITY='ld';
+  PARAM_HIGH_DENSITY='hd';
+
 TYPE
   TmyFloat=double;
 
   T_2dVector=array[0..1] of TmyFloat;
   T_value=array[0..SYS_SIZE-1,0..SYS_SIZE-1] of record mass:TmyFloat; p:T_2dVector; end;
 
-  T_cellSystem=object
+  { T_cellSystem }
+
+  T_cellSystem=object(T_serializable)
     private
       nextValue,
       value:T_value;
-      replaying:boolean;
-      handle:TFileStream;
-      logHandle:textFile;
     public
       CONSTRUCTOR create;
       DESTRUCTOR destroy;
 
       FUNCTION doMacroTimeStep:boolean;
       FUNCTION getPicture(CONST displayWidth,displayHeight:longint):P_rgbPicture;
+      FUNCTION getSerialVersion:dword; virtual;
+      FUNCTION loadFromStream(VAR stream:T_bufferedInputStreamWrapper):boolean; virtual;
+      PROCEDURE saveToStream(VAR stream:T_bufferedOutputStreamWrapper); virtual;
   end;
 
 CONST
   zeroVec:T_2dVector=(0,0);
 
+FUNCTION fileName_anim:string;
+FUNCTION fileName_dump:string;
 FUNCTION filename_txt:string;
 FUNCTION hasCmdLineParameter(CONST s:string):boolean;
+VAR logHandle:textFile;
 IMPLEMENTATION
 USES sysutils;
 VAR cachedAttraction:array [-SYS_SIZE+1..SYS_SIZE-1,-SYS_SIZE+1..SYS_SIZE-1] of T_2dVector;
@@ -49,7 +59,12 @@ FUNCTION hasCmdLineParameter(CONST s:string):boolean;
     result:=false;
   end;
 
-FUNCTION fileName:string;
+FUNCTION fileName_anim:string;
+  begin
+    result:='grav'+intToStr(SYS_SIZE)+'.anim';
+  end;
+
+FUNCTION fileName_dump:string;
   begin
     result:='grav'+intToStr(SYS_SIZE)+'.history';
   end;
@@ -154,38 +169,25 @@ CONSTRUCTOR T_cellSystem.create;
     rewrite(logHandle);
     close(logHandle);
 
-    if fileExists(fileName) and not(hasCmdLineParameter('restart')) then begin
-      handle:=TFileStream.create(fileName,fmOpenReadWrite);
-      handle.Seek(0,soBeginning);
-      replaying:=true;
-    end else begin
-      if      hasCmdLineParameter('ld') then massFactor:=0.1
-      else if hasCmdLineParameter('hd') then massFactor:=  1
-      else                                   massFactor:=  10;
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
-        value[i,j].mass:=massFactor*(0.95+0.05*random);
-        repeat
-          p[0]:=1-2*random;
-          p[1]:=1-2*random;
-        until p[0]*p[0]+p[1]*p[1]<1;
-        value[i,j].p:=p*0*value[i,j].mass;
-      end;
-
-      replaying:=false;
-      handle:=TFileStream.create(fileName,fmCreate);
-      handle.Seek(0,soBeginning);
-      handle.write(value,sizeOf(value));
+    if      hasCmdLineParameter(PARAM_LOW_DENSITY)  then massFactor:=0.1
+    else if hasCmdLineParameter(PARAM_HIGH_DENSITY) then massFactor:=  1
+    else                                                 massFactor:=  10;
+    for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
+      value[i,j].mass:=massFactor*(0.95+0.05*random);
+      repeat
+        p[0]:=1-2*random;
+        p[1]:=1-2*random;
+      until p[0]*p[0]+p[1]*p[1]<1;
+      value[i,j].p:=p*0*value[i,j].mass;
     end;
   end;
 
 DESTRUCTOR T_cellSystem.destroy;
   begin
-    handle.destroy;
   end;
 
-FUNCTION T_cellSystem.doMacroTimeStep:boolean;
+FUNCTION T_cellSystem.doMacroTimeStep: boolean;
   VAR accel:array[0..SYS_SIZE-1,0..SYS_SIZE-1] of T_2dVector;
-      timeStepIndex: int64;
 
   PROCEDURE resetAcceleration;
     VAR i,j:longint;
@@ -291,30 +293,30 @@ FUNCTION T_cellSystem.doMacroTimeStep:boolean;
 
   begin
     start:=now;
-    timeStepIndex:=handle.position div sizeOf(value);
-    if replaying then begin
-      j:=handle.position;
-      i:=handle.read(nextValue,sizeOf(value));
-      if i<>sizeOf(value) then begin
-        append(logHandle);
-        writeln(logHandle,'Tried to read ',sizeOf(value),' bytes @',handle.position,' but read ',i);
-        writeln(          'Tried to read ',sizeOf(value),' bytes @',handle.position,' but read ',i);
-        close(logHandle);
-        replaying:=false;
-        if hasCmdLineParameter('replay')
-        then exit(false);
-      end else begin
-        value:=nextValue;
-        m:=0;
-        for ti:=0 to SYS_SIZE-1 do for tj:=0 to SYS_SIZE-1 do m+=value[ti,tj].mass;
-        append(logHandle);
-        writeln(logHandle,'Replaying ',timeStepIndex,' @',handle.position,'; mass=',m:0:6);
-        writeln(          'Replaying ',timeStepIndex,' @',handle.position,'; mass=',m:0:6);
-        close(logHandle);
-      end;
-      handle.Seek(j+i,soBeginning);
-      exit(true);
-    end;
+    //timeStepIndex:=handle.position div sizeOf(value);
+    //if replaying then begin
+    //  j:=handle.position;
+    //  i:=handle.read(nextValue,sizeOf(value));
+    //  if i<>sizeOf(value) then begin
+    //    append(logHandle);
+    //    writeln(logHandle,'Tried to read ',sizeOf(value),' bytes @',handle.position,' but read ',i);
+    //    writeln(          'Tried to read ',sizeOf(value),' bytes @',handle.position,' but read ',i);
+    //    close(logHandle);
+    //    replaying:=false;
+    //    if hasCmdLineParameter('replay')
+    //    then exit(false);
+    //  end else begin
+    //    value:=nextValue;
+    //    m:=0;
+    //    for ti:=0 to SYS_SIZE-1 do for tj:=0 to SYS_SIZE-1 do m+=value[ti,tj].mass;
+    //    append(logHandle);
+    //    writeln(logHandle,'Replaying ',timeStepIndex,' @',handle.position,'; mass=',m:0:6);
+    //    writeln(          'Replaying ',timeStepIndex,' @',handle.position,'; mass=',m:0:6);
+    //    close(logHandle);
+    //  end;
+    //  handle.Seek(j+i,soBeginning);
+    //  exit(true);
+    //end;
     result:=false;
     ensureAttractionFactors();
 
@@ -369,13 +371,12 @@ FUNCTION T_cellSystem.doMacroTimeStep:boolean;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do m+=value[i,j].mass;
 
     append(logHandle);
-    writeln(logHandle,'Step done: ',(now-start)*24*60*60:0:5,'s; ',subStepsToTake,' sub steps; saving ',handle.position div sizeOf(value),' @',handle.position,'; mass=',m:0:6);
-    writeln(          'Step done: ',(now-start)*24*60*60:0:5,'s; ',subStepsToTake,' sub steps; saving ',handle.position div sizeOf(value),' @',handle.position,'; mass=',m:0:6);
+    writeln(logHandle,'Step done: ',(now-start)*24*60*60:0:5,'s; ',subStepsToTake,' sub steps; mass=',m:0:6);
+    writeln(          'Step done: ',(now-start)*24*60*60:0:5,'s; ',subStepsToTake,' sub steps; mass=',m:0:6);
     close(logHandle);
-    if not(replaying) then handle.write(value,sizeOf(value));
   end;
 
-FUNCTION T_cellSystem.getPicture(CONST displayWidth,displayHeight:longint): P_rgbPicture;
+FUNCTION T_cellSystem.getPicture(CONST displayWidth, displayHeight: longint): P_rgbPicture;
   FUNCTION colorOf(CONST m:TmyFloat):T_rgbColor;
     FUNCTION validByte(CONST s:single):byte;
       begin
@@ -403,10 +404,32 @@ FUNCTION T_cellSystem.getPicture(CONST displayWidth,displayHeight:longint): P_rg
     end;
 
   VAR i,j:longint;
+      totalMass:double=0;
   begin
     new(result,create(SYS_SIZE,SYS_SIZE));
-    for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do
-      result^.pixel[i,j]:=colorOf(value[i,j].mass)
+    for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
+      result^.pixel[i,j]:=colorOf(mass);
+      totalMass+=mass;
+    end;
+    result^.mass:=totalMass;
+  end;
+
+FUNCTION T_cellSystem.getSerialVersion: dword;
+  begin
+    result:=31+SYS_SIZE;
+  end;
+
+FUNCTION T_cellSystem.loadFromStream(VAR stream: T_bufferedInputStreamWrapper): boolean;
+  begin
+    if not(inherited) then exit(false);
+    stream.read(value,sizeOf(value));
+    result:=stream.allOkay;
+  end;
+
+PROCEDURE T_cellSystem.saveToStream(VAR stream: T_bufferedOutputStreamWrapper);
+  begin
+    inherited;
+    stream.write(value,sizeOf(value));
   end;
 
 end.

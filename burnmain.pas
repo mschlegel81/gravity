@@ -45,24 +45,50 @@ FUNCTION calcThread(p:pointer):ptrint;
       framesInQueue:longint=-1;
       picture: P_rgbPicture;
       handle:  textFile;
-      replayedBefore: boolean=true;
-      replaying     : boolean=true;
+      animStream: TFileStream;
+      replaying: boolean;
+      anyCalculated:boolean=false;
   begin
     randomize;
     assign(handle,filename_txt);
     rewrite(handle);
     queue:=P_animation(p);
     sys.create;
-    while not(closing) and (calcFrameCount<5000) and not(not(replaying) and replayedBefore and hasCmdLineParameter('replay')) do begin
-      replayedBefore:=replaying;
-      replaying:=sys.doMacroTimeStep;
+    if fileExists(fileName_dump) and fileExists(fileName_anim) and not(hasCmdLineParameter(PARAM_RESTART)) then begin
+      if not(sys.loadFromFile(fileName_dump)) then begin
+        writeln('FATAL ERROR ON RESTORING DUMP');
+        halt(1);
+      end;
+      animStream:=TFileStream.create(fileName_anim,fmOpenReadWrite);
+      animStream.Seek(0,soBeginning);
+      repeat
+        new(picture,create(SYS_SIZE,SYS_SIZE));
+        replaying:=picture^.load(animStream);
+        if replaying then begin
+          append(logHandle);
+          writeln(logHandle,'Replay; mass=',picture^.mass:0:6);
+          writeln(          'Replay; mass=',picture^.mass:0:6);
+          close(logHandle);
+          queue^.addFrame(picture);
+          inc(calcFrameCount);
+        end else dispose(picture,destroy);
+      until not(replaying);
+    end else begin
+      animStream:=TFileStream.create(fileName_anim,fmCreate);
+      animStream.Seek(0,soBeginning);
+    end;
+    while not(closing) and (calcFrameCount<5000) and not(hasCmdLineParameter(PARAM_REPLAY)) do begin
+      sys.doMacroTimeStep;
+      anyCalculated:=true;
       picture:=sys.getPicture(BurnForm.width,BurnForm.height);
+      picture^.write(animStream);
       writeln(handle,picture^.toString);
       framesInQueue:=queue^.addFrame(picture);
       inc(calcFrameCount);
-      //if not(replaying) and not(closing) and (framesInQueue>aheadTarget) then sleep(framesInQueue-aheadTarget);
     end;
     close(handle);
+    animStream.destroy;
+    if anyCalculated then sys.saveToFile(fileName_dump);
     sys.destroy;
     result:=0;
     threadRunning:=false;

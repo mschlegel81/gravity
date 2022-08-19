@@ -3,7 +3,7 @@ UNIT basicGraphics;
 {$mode objfpc}{$H+}
 
 INTERFACE
-USES ExtCtrls;
+USES ExtCtrls,Classes;
 TYPE
   T_rgbColor=array[0..2] of byte;
   P_rgbPicture=^T_rgbPicture;
@@ -18,12 +18,16 @@ TYPE
       PROCEDURE setPixel(CONST x,y:longint; CONST value:T_rgbColor);
       FUNCTION getPixel(CONST x,y:longint):T_rgbColor;
     public
+      mass:double;
       CONSTRUCTOR create(CONST width_,height_:longint);
       DESTRUCTOR destroy;
 
       PROCEDURE copyToImage(VAR destImage:TImage);
       PROPERTY pixel[x,y:longint]:T_rgbColor read getPixel write setPixel;
       FUNCTION toString:string;
+
+      FUNCTION load(fileStream:TFileStream):boolean;
+      PROCEDURE write(fileStream:TFileStream);
   end;
 
   P_animation=^T_animation;
@@ -41,7 +45,7 @@ TYPE
       PROPERTY getFrameCount:longint read frameCount;
   end;
 IMPLEMENTATION
-USES sysutils,Classes,  Graphics, IntfGraphics, GraphType;
+USES sysutils,Graphics, IntfGraphics, GraphType;
 { T_animation }
 
 CONSTRUCTOR T_animation.create;
@@ -160,6 +164,26 @@ FUNCTION T_rgbPicture.toString: string;
       result+='['+intToStr(c[0])+','+intToStr(c[1])+','+intToStr(c[2])+']';
     end;
     result+=']]';
+  end;
+
+FUNCTION T_rgbPicture.load(fileStream: TFileStream): boolean;
+  VAR expected,read,p:longint;
+
+  begin
+    p:=fileStream.position;
+    expected:=sizeOf(T_rgbColor)*width*height;
+    read:=fileStream.read(Pixels^,expected);
+    if expected=read then begin p+=read; fileStream.Seek(p,soBeginning); end else exit(false);
+
+    expected:=sizeOf(mass);
+    read:=fileStream.read(mass,sizeOf(mass));
+    if expected=read then begin p+=read; fileStream.Seek(p,soBeginning); result:=true; end else exit(false);
+  end;
+
+PROCEDURE T_rgbPicture.write(fileStream: TFileStream);
+  begin
+    fileStream.write(Pixels^,sizeOf(T_rgbColor)*width*height);
+    fileStream.write(mass,sizeOf(mass));
   end;
 
 end.

@@ -23,7 +23,7 @@ TYPE
       value:T_value;
       replaying:boolean;
       handle:TFileStream;
-      logHandle:TextFile;
+      logHandle:textFile;
     public
       CONSTRUCTOR create;
       DESTRUCTOR destroy;
@@ -45,11 +45,11 @@ VAR cachedAttraction:array [-SYS_SIZE+1..SYS_SIZE-1,-SYS_SIZE+1..SYS_SIZE-1] of 
 FUNCTION hasCmdLineParameter(CONST s:string):boolean;
   VAR i:longint;
   begin
-    for i:=1 to ParamCount do if ParamStr(i)=s then exit(true);
+    for i:=1 to paramCount do if paramStr(i)=s then exit(true);
     result:=false;
   end;
 
-FUNCTION filename:string;
+FUNCTION fileName:string;
   begin
     result:='grav'+intToStr(SYS_SIZE)+'.history';
   end;
@@ -150,9 +150,9 @@ CONSTRUCTOR T_cellSystem.create;
       p:T_2dVector;
       massFactor:double;
   begin
-    assign(logHandle,ChangeFileExt(paramstr(0),'.log'));
+    assign(logHandle,ChangeFileExt(paramStr(0),'.log'));
     rewrite(logHandle);
-    Close(logHandle);
+    close(logHandle);
 
     if fileExists(fileName) and not(hasCmdLineParameter('restart')) then begin
       handle:=TFileStream.create(fileName,fmOpenReadWrite);
@@ -168,7 +168,7 @@ CONSTRUCTOR T_cellSystem.create;
           p[0]:=1-2*random;
           p[1]:=1-2*random;
         until p[0]*p[0]+p[1]*p[1]<1;
-        value[i,j].p:=p*value[i,j].mass;
+        value[i,j].p:=p*0*value[i,j].mass;
       end;
 
       replaying:=false;
@@ -183,10 +183,9 @@ DESTRUCTOR T_cellSystem.destroy;
     handle.destroy;
   end;
 
-
 FUNCTION T_cellSystem.doMacroTimeStep:boolean;
   VAR accel:array[0..SYS_SIZE-1,0..SYS_SIZE-1] of T_2dVector;
-      timestepIndex: Int64;
+      timeStepIndex: int64;
 
   PROCEDURE resetAcceleration;
     VAR i,j:longint;
@@ -212,30 +211,37 @@ FUNCTION T_cellSystem.doMacroTimeStep:boolean;
     end;
 
   PROCEDURE annihilate(CONST dtEff:TmyFloat);
-    CONST DV:array[-1..1,-1..1] of T_2dVector=(((-7.071, -7.071),(-10,0),(-7.071, 7.071)),
+    CONST MASS_DIFFUSED=1E-2;
+          MASS_LOST    =1E-4;
+          threshold    =5;
+          dv:array[-1..1,-1..1] of T_2dVector=(((-7.071, -7.071),(-10,0),(-7.071, 7.071)),
                                                (( 0.0  ,-10    ),(  0,0),(     0,10    )),
                                                (( 7.071, -7.071),( 10,0),( 7.071, 7.071)));
-          BLOW:array[-1..1,-1..1] of TmyFloat=((0.03850777999707,0.06868155276104,0.03850777999707),
-                                               (0.06868155276104,0.0             ,0.06868155276104),
-                                               (0.03850777999707,0.06868155276104,0.03850777999707));
+          BLOW:array[-1..1,-1..1] of TmyFloat=
+          ((0.089812, 0.160187,0.089812),
+           (0.160187,-0.999996,0.160187),
+           (0.089812, 0.160187,0.089812));
     VAR i,j:longint;
-        factor, massLoss, m_:TmyFloat;
+        factor, massDiffusion, m_:TmyFloat;
         di,dj:longint;
         v0, v_:T_2dVector;
     begin
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do if value[i,j].mass>5 then begin
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do if value[i,j].mass>threshold then begin
         with value[i,j] do begin
-          factor:=dtEff*5E-3*(mass-5);
-          massLoss:=mass*factor;
           v0  :=p*(1/mass);
+
+          factor:=dtEff*mass*(mass-threshold);
+          massDiffusion:=factor*MASS_DIFFUSED;
+          factor              *=MASS_LOST;
+
           mass*=(1-factor);
           p   *=(1-factor);
         end;
 
         //Blowout:
         for di:=-1 to 1 do for dj:=-1 to 1 do with nextValue[(i+di+SYS_SIZE) mod SYS_SIZE,(j+dj+SYS_SIZE) mod SYS_SIZE] do begin
-          v_:=v0+DV[di,dj];
-          m_:=massLoss*BLOW[di,dj];
+          v_:=v0+dv[di,dj];
+          m_:=massDiffusion*BLOW[di,dj];
 
           mass+=m_;
           p   +=v_*m_;
@@ -243,12 +249,11 @@ FUNCTION T_cellSystem.doMacroTimeStep:boolean;
       end;
     end;
 
-
   PROCEDURE modifyVelocities;
     VAR pTot:T_2dVector=(0,0);
         mTot:TmyFloat=0;
         deltaV:T_2dVector=(0,0);
-        i, j: Integer;
+        i, j: integer;
     begin
 
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
@@ -286,14 +291,14 @@ FUNCTION T_cellSystem.doMacroTimeStep:boolean;
 
   begin
     start:=now;
-    timestepIndex:=handle.position div sizeOf(value);
+    timeStepIndex:=handle.position div sizeOf(value);
     if replaying then begin
       j:=handle.position;
       i:=handle.read(nextValue,sizeOf(value));
       if i<>sizeOf(value) then begin
         append(logHandle);
-        writeln(logHandle,'Tried to read ',sizeOf(value),' bytes @',handle.Position,' but read ',i);
-        writeln(          'Tried to read ',sizeOf(value),' bytes @',handle.Position,' but read ',i);
+        writeln(logHandle,'Tried to read ',sizeOf(value),' bytes @',handle.position,' but read ',i);
+        writeln(          'Tried to read ',sizeOf(value),' bytes @',handle.position,' but read ',i);
         close(logHandle);
         replaying:=false;
         if hasCmdLineParameter('replay')
@@ -303,8 +308,8 @@ FUNCTION T_cellSystem.doMacroTimeStep:boolean;
         m:=0;
         for ti:=0 to SYS_SIZE-1 do for tj:=0 to SYS_SIZE-1 do m+=value[ti,tj].mass;
         append(logHandle);
-        writeln(logHandle,'Replaying ',timestepIndex,' @',handle.position,'; mass=',m:0:6);
-        writeln(          'Replaying ',timestepIndex,' @',handle.position,'; mass=',m:0:6);
+        writeln(logHandle,'Replaying ',timeStepIndex,' @',handle.position,'; mass=',m:0:6);
+        writeln(          'Replaying ',timeStepIndex,' @',handle.position,'; mass=',m:0:6);
         close(logHandle);
       end;
       handle.Seek(j+i,soBeginning);
@@ -334,8 +339,8 @@ FUNCTION T_cellSystem.doMacroTimeStep:boolean;
         m:=value[i,j].mass;
         v:=value[i,j].p*(1/(1E-10+m))+accel[i,j]*dtSub;
 
-        x[0]:=i+v[0]*dtSub; while x[0]<0 do x[0]+=SYS_SIZE;
-        x[1]:=j+v[1]*dtSub; while x[1]<0 do x[1]+=SYS_SIZE;
+        x[0]:=i+v[0]*dtSub/GRID_SIZE; while x[0]<0 do x[0]+=SYS_SIZE;
+        x[1]:=j+v[1]*dtSub/GRID_SIZE; while x[1]<0 do x[1]+=SYS_SIZE;
         ti:=trunc(x[0]); x[0]-=ti; ti:=ti mod SYS_SIZE;
         tj:=trunc(x[1]); x[1]-=tj; tj:=tj mod SYS_SIZE;
                               tj_:=(tj+1) mod SYS_SIZE;

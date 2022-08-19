@@ -32,6 +32,7 @@ VAR
 IMPLEMENTATION
 VAR queue:T_animation;
     aheadTarget:longint=200;
+    calcFrameCount:longint=0;
     closing:boolean=false;
     threadRunning:boolean=true;
 {$R *.lfm}
@@ -44,21 +45,22 @@ FUNCTION calcThread(p:pointer):ptrint;
       framesInQueue:longint=-1;
       picture: P_rgbPicture;
       handle:  textFile;
-      replayedBefore: Boolean=true;
-      replaying     : Boolean=true;
+      replayedBefore: boolean=true;
+      replaying     : boolean=true;
   begin
     randomize;
     assign(handle,filename_txt);
     rewrite(handle);
     queue:=P_animation(p);
     sys.create;
-    while not(closing) and not(not(replaying) and replayedBefore and hasCmdLineParameter('replay')) do begin
+    while not(closing) and (calcFrameCount<5000) and not(not(replaying) and replayedBefore and hasCmdLineParameter('replay')) do begin
       replayedBefore:=replaying;
       replaying:=sys.doMacroTimeStep;
       picture:=sys.getPicture(BurnForm.width,BurnForm.height);
       writeln(handle,picture^.toString);
       framesInQueue:=queue^.addFrame(picture);
-      if not(replaying) and not(closing) and (framesInQueue>aheadTarget) then sleep(framesInQueue-aheadTarget);
+      inc(calcFrameCount);
+      //if not(replaying) and not(closing) and (framesInQueue>aheadTarget) then sleep(framesInQueue-aheadTarget);
     end;
     close(handle);
     sys.destroy;
@@ -101,7 +103,7 @@ PROCEDURE TBurnForm.IdleTimer1Timer(Sender: TObject);
       end;
     end else framesCached:=queue.getFrameCount;
     if (framesCached>aheadTarget) and (aheadTarget>100) then dec(aheadTarget);
-    caption:='Gravity '+intToStr(SYS_SIZE)+' ('+intToStr(framesCached)+'/'+IntToStr(aheadTarget)+' frames ahead)'+BoolToStr(closing,' -- CLOSING','')+BoolToStr(replaying,'',' -- PAUSED');
+    caption:='Gravity '+intToStr(SYS_SIZE)+' @'+intToStr(calcFrameCount-framesCached)+' ('+intToStr(framesCached)+'/'+intToStr(aheadTarget)+' frames ahead)'+BoolToStr(closing,' -- CLOSING','')+BoolToStr(replaying,'',' -- PAUSED');
     if closing and not(threadRunning) then close;
   end;
 

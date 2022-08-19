@@ -1,4 +1,4 @@
-replay(filename)->begin
+replay(filename,export:Boolean)->begin
   local bytesRead:=0;
   local frames:=0;
   local lastBytesRead:=0;
@@ -19,24 +19,32 @@ replay(filename)->begin
     data.isVoid ? void : [line.byteLength,[data[1]*(1/255),data[0]]];
   end)
   .agg((d)->begin
+
+    plotRasterImage@(d[1]);
+    export
+    ? begin
+        local outFile:=filename.changeFileExt(format('_%4.4d.png',frames));
+        log('Writing ',outFile);
+        renderToFile(outFile,d[1,1],d[1,1],true);
+      end
+    : begin
+        addAnimationFrame;
+        postDisplay;
+      end;
     frames+=1;
     bytesRead+=d[0];
     scriptTime>lastOutputTime+1
     ? doLog('')
     : void;
-
-    plotRasterImage@(d[1]);
-    addAnimationFrame;
-    postDisplay;
   end);
-  doLog(' - EOF');
   callMemoryCleaner;
+  doLog(' - EOF');
 end;
 
 //*Replay with an ask dialog
 main->begin
   assertGuiStarted;
-  ask('Which file to replay?',allFiles('.','grav*.txt').map((n)->relativeFileName(myPath,n).systemSpecificFilename)).replay;
+  ask('Which file to replay?',allFiles('.','grav*.txt').map((n)->relativeFileName(myPath,n).systemSpecificFilename)).replay(false);
 end;
 
 //*List files with respective line counts
@@ -44,11 +52,14 @@ main('list')->
 allFiles('.','grav*.txt').pMap((l)->begin
   local k:=0;
   fileLineIterator(l).each(l,k+=1).trailing;
-  join([l,k],"\t");
+  join([replace('#'&l,'#./',''),k],"\t");
 end).join("\n").print;
 
 //*Replay a specific file
 main(filename)->begin
   assertGuiStarted;
-  replay(filename);
+  replay(filename,false);
 end;
+
+//*Replay a specific file
+main(filename,'png')->replay(filename,true);

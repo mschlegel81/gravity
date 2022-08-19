@@ -1,0 +1,34 @@
+datastore DATA;
+
+main(nameOrPattern,...)->flatten(nameOrPattern,...).unique.each(file,makeReplay(file));
+
+makeReplay(txtName:String)->begin
+  log('Reading ',txtName);
+  local dataIterator:=txtName.fileLineIterator.pMap(::interpret);
+  local l:=dataIterator();
+  local res:=l[0];
+  DATA:=[local prev:=l[1].flatten]|
+  dataIterator.map((d)->d[1].flatten).each(curr,begin
+    local delta:=curr-prev; prev:=curr; delta;
+  end);
+
+  local scriptName:=txtName.changeFileExt('.mnh');
+  local datastoreName:=txtName.changeFileExt('.datastore0');
+
+  dataIterator:=void;
+  log('Writing ',datastoreName);
+  writeDataStores;
+  moveFile(myPath.changeFileExt('.datastore0'),datastoreName);
+  log('Writing ',scriptName);
+  writeFileLines(scriptName,['USE GUI;',
+   'datastore DATA;',
+   'main->begin',
+   '  local x:=DATA[0]*0;',
+   '  DATA.each(delta,begin',
+   '    chunkMap((x+=delta)/255,3).toList.plotRasterImage('&res&');',
+   '    addAnimationFrame;',
+   '    postDisplay;',
+   '    index mod 1000=0 ? callMemoryCleaner : void;',
+   '  end);',
+   'end;']);
+end;

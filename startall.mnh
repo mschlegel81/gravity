@@ -10,8 +10,6 @@ parameters(execName:String,closeAfter:Boolean,replay:Boolean)->['-d',execName.ex
 gravExes:=allFiles('.','grav*.exe').map(::expandedFileName).map(::systemSpecificFilename);
 runningGravTasks->getTaskInfo.map((i)->gravExes[!pos(gravExes,i['commandLine']).isInfinite][0]).toSet;
 
- //.filter((c)->c.matches('grav\d+\.exe')).trim.expandedFileName.systemSpecificFilename.toSet;
-
 start(closeAfter:Boolean,replay:Boolean)->begin
   local alreadyRunning:=runningGravTasks;
   local startedCount:=0;
@@ -46,7 +44,7 @@ main->start(true,false);
 main('k')->start(false,false);
 
 //*Start in replay mode
-main('r')->start(false,true);
+main('r')->start(true,true);
 
 main('graph')->begin
   assertGuiStarted;

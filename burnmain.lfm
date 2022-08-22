@@ -1,11 +1,11 @@
 object BurnForm: TBurnForm
-  Left = 1
-  Height = 400
-  Top = 145
-  Width = 400
+  Left = 316
+  Height = 512
+  Top = 169
+  Width = 512
   Caption = 'BurnForm'
-  ClientHeight = 400
-  ClientWidth = 400
+  ClientHeight = 512
+  ClientWidth = 512
   OnClose = FormClose
   OnCloseQuery = FormCloseQuery
   OnCreate = FormCreate
@@ -14,9 +14,9 @@ object BurnForm: TBurnForm
   LCLVersion = '2.0.12.0'
   object Image1: TImage
     Left = 0
-    Height = 400
+    Height = 512
     Top = 0
-    Width = 400
+    Width = 512
     Align = alClient
     OnClick = Image1Click
     Proportional = True

@@ -1,0 +1,36 @@
+#!C:\bin\mnh_light.exe -quiet -headless -convertPrintToLog -logDateFmt hh:mm:ss -logLocationLength 14 +log stdOut(1)
+main(...)->begin
+  files(...)
+    .flatten
+    .map((f)->f.changeFileExt(''))
+    .unique
+    .each(f,compressSet(f));
+  log('Finished');
+end;
+
+datastore filestore;
+datastoreName:=changeFileExt(myPath,'.datastore0');
+compressSet(s)->begin
+  local set:=files(['.anim','.exe','.dump'].map((e)->s.changeFileExt(e))).sort;
+  local targetMnh:=s.changeFileExt('.mnh');
+  local targetDat:=s.changeFileExt('.datastore0');
+
+  (set.size==3) and (!fileExists(targetMnh) OR !fileExists(targetDat))
+  ? begin
+      log('Creating set: ',s);
+      filestore:=set.map((f)->f.extractFileName=>f.fileContents);
+      log('Writing ',targetDat);
+      writeDataStores;
+      copyFile(datastoreName,targetDat);
+      log('Writing ',targetMnh);
+      writeFileLines(targetMnh,
+        ['datastore filestore;',
+         'main->begin',
+         '  myPath.extractFileDirectory.changeDirectory;',
+         '  filestore.each(entry,entry[0].writeFile(entry[1]));',
+         "  execPipeless(filestore.getInner(0).trailing,['replay']);",
+         'end;']);
+      log('Done (set: ',s,')');
+    end
+  : void;
+end;

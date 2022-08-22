@@ -17,20 +17,15 @@ start(closeAfter:Boolean,replay:Boolean)->begin
   .filter((f)->!matches(f,'highTolerance'))
   .sort
   .map((n)->n.extractFileNameOnly.clean(['0'..'9'],'').softCast=>n)
-  .sort
-  .getInner(1)
+  .sort(1).reverseList.sort(0).reverseList.getInner(1)
   .each(execName,execName in alreadyRunning
                  ? log('          ',execName,' is already running')
                  : begin
+                     while((getCPULoadPercentage)>80,sleep(1));
                      log('Starting: ',execName);
                      assert(exec(wt,parameters(execName,closeAfter,replay))[1]=0);
                      startedCount+=1;
-                     local load:=100;
-                     while((load:=getCPULoadPercentage)>80 OR execName not in (alreadyRunning:=runningGravTasks),
-                       begin
-                         note('Already running: ',join("\n  "&sort(alreadyRunning)),"\nCPU load=",load);
-                         sleep(0.1);
-                       end);
+                     while(execName not in (alreadyRunning:=runningGravTasks),sleep(0.1));
                    end);
   log(startedCount,' tasks started');
   alreadyRunning:=getTaskInfo.map((i)->i['commandLine']).filter((cl)->!pos(gravExes,cl).isInfinite.agg(and));
@@ -76,5 +71,4 @@ main('graph')->begin
     addAnimationFrame;
   end);
 end;
-
 

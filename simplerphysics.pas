@@ -6,13 +6,14 @@ INTERFACE
 USES basicGraphics,serializationUtil;
 
 CONST
-  SYMMETRIC_CONTINUATION=32;//4096 div SYS_SIZE;
+  SYMMETRIC_CONTINUATION=20;//4096 div SYS_SIZE;
   dt             =0.05;
   GRID_SIZE      =1;
   MAX_ACCELERATION_RANGE=GRID_SIZE*0.5;
 
   PARAM_RESTART='restart';
   PARAM_REPLAY='replay';
+  PARAM_CLOSE='close';
   PARAM_LOW_DENSITY='ld';
   PARAM_HIGH_DENSITY='hd';
 
@@ -61,17 +62,17 @@ FUNCTION hasCmdLineParameter(CONST s:string):boolean;
 
 FUNCTION fileName_anim:string;
   begin
-    result:='grav'+intToStr(SYS_SIZE)+'.anim';
+    result:=ChangeFileExt(paramStr(0),'.anim');
   end;
 
 FUNCTION fileName_dump:string;
   begin
-    result:='grav'+intToStr(SYS_SIZE)+'.dump';
+    result:=ChangeFileExt(paramStr(0),'.dump');
   end;
 
 FUNCTION filename_txt:string;
   begin
-    result:='grav'+intToStr(SYS_SIZE)+'.txt';
+    result:=ChangeFileExt(paramStr(0),'.txt');
   end;
 
 OPERATOR *(CONST x:T_2dVector; CONST y:TmyFloat):T_2dVector;
@@ -129,7 +130,7 @@ PROCEDURE ensureAttractionFactors;
                                     (GAUSS_LEGENDRE_WEIGHT[n,i].w*
                                      GAUSS_LEGENDRE_WEIGHT[n,j].w);
 
-      if distance>SYS_SIZE*SYS_SIZE then result*=exp(-0.5*distance*(1/SYS_SIZE*SYS_SIZE));
+      if distance>SYS_SIZE*SYS_SIZE then result*=exp(-0.5*(distance*(1/SYS_SIZE*SYS_SIZE)-1));
     end;
 
   VAR ix,iy:longint;

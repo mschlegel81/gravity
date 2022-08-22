@@ -61,5 +61,6 @@ main(filename)->begin
   replay(filename,false);
 end;
 
-//*Replay a specific file
-main(filename,'png')->replay(filename,true);
+//*Create png graphics for given files
+main('png',filename,...)->
+  files(filename|...).filter((f)->f.extractFileExt.lower=='.txt').each(f,replay(f,true));

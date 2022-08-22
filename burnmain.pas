@@ -47,7 +47,6 @@ FUNCTION calcThread(p:pointer):ptrint;
       handle:  textFile;
       animStream: TFileStream;
       replaying: boolean;
-      anyCalculated:boolean=false;
   begin
     randomize;
     assign(handle,filename_txt);
@@ -72,7 +71,7 @@ FUNCTION calcThread(p:pointer):ptrint;
           framesInQueue:=queue^.addFrame(picture);
           inc(calcFrameCount);
         end else dispose(picture,destroy);
-      until not(replaying);
+      until not(replaying) or closing;
       close(logHandle);
     end else begin
       animStream:=TFileStream.create(fileName_anim,fmCreate);
@@ -80,7 +79,6 @@ FUNCTION calcThread(p:pointer):ptrint;
     end;
     while not(closing) and (calcFrameCount<5000) and not(hasCmdLineParameter(PARAM_REPLAY)) do begin
       sys.doMacroTimeStep;
-      anyCalculated:=true;
       picture:=sys.getPicture(BurnForm.width,BurnForm.height);
       picture^.write(animStream);
       sys.saveToFile(fileName_dump);
@@ -95,6 +93,7 @@ FUNCTION calcThread(p:pointer):ptrint;
     result:=0;
     threadRunning:=false;
     writeln('Calculation thread stopped');
+    if hasCmdLineParameter(PARAM_CLOSE) then closing:=true;
   end;
 
 PROCEDURE TBurnForm.FormCreate(Sender: TObject);

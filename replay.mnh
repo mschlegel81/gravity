@@ -1,4 +1,5 @@
 replay(filename,export:Boolean)->begin
+  log('Reading ',filename);
   local bytesRead:=0;
   local frames:=0;
   local lastBytesRead:=0;
@@ -13,26 +14,28 @@ replay(filename,export:Boolean)->begin
     lastBytesRead:=bytesRead;
   end;
 
-  fileLineIterator(filename)
-  .pMap((line)->begin
-    local data:=try(::interpret,[line]);
-    data.isVoid ? void : [line.byteLength,[data[1]*(1/255),data[0]]];
-  end)
-  .agg((d)->begin
+  local index:=-1;
 
-    plotRasterImage@(d[1]);
+  fileLineIterator(filename)
+  .map((line)->[filename.changeFileExt(format('_%4.4d.png',index+=1)),line.byteLength,line])
+  .pMap((D)->export AND fileExists(D[0]) ? void : begin
+     local data:=try(::interpret,[D[2]]);
+     data.isVoid ? void : [D[0],D[1],[data[1]*(1/255),data[0]]];
+   end)
+  .agg((d)->begin
     export
     ? begin
-        local outFile:=filename.changeFileExt(format('_%4.4d.png',frames));
-        log('Writing ',outFile);
-        renderToFile(outFile,d[1,1],d[1,1],true);
+        plotRasterImage@(d[2]);
+        log('Writing ',d[0]);
+        renderToFile(d[0],d[2,1],d[2,1],true);
       end
     : begin
+        plotRasterImage@(d[2]);
         addAnimationFrame;
         postDisplay;
       end;
     frames+=1;
-    bytesRead+=d[0];
+    bytesRead+=d[1];
     scriptTime>lastOutputTime+1
     ? doLog('')
     : void;

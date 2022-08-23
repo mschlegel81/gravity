@@ -1,6 +1,6 @@
 #!C:\bin\mnh_light.exe -quiet -headless -convertPrintToLog -logDateFmt hh:mm:ss -logLocationLength 14 +log stdOut(1)
-main(...)->begin
-  files(...)
+main(firstPattern,...)->begin
+  files(firstPattern|...)
     .flatten
     .map((f)->f.changeFileExt(''))
     .unique
@@ -28,9 +28,10 @@ compressSet(s)->begin
          'main->begin',
          '  myPath.extractFileDirectory.changeDirectory;',
          '  filestore.each(entry,entry[0].writeFile(entry[1]));',
-         "  execPipeless(filestore.getInner(0).trailing,['replay']);",
          'end;']);
       log('Done (set: ',s,')');
     end
   : void;
 end;
+
+main->allFiles('.','*.log').filter((f)->f.fileStats[0]>=5000).map((f)->f.changeFileExt('')).unique.each(f,compressSet(f));

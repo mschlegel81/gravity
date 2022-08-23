@@ -3,7 +3,7 @@ UNIT basicGraphics;
 {$mode objfpc}{$H+}
 
 INTERFACE
-USES ExtCtrls,Classes;
+USES ExtCtrls,Classes,myGenerics,myStringUtil;
 TYPE
   T_rgbColor=array[0..2] of byte;
   P_rgbPicture=^T_rgbPicture;
@@ -153,17 +153,20 @@ PROCEDURE T_rgbPicture.copyToImage(VAR destImage: TImage);
 
   end;
 
+VAR byteStrings:array[0..255] of string;
+
 FUNCTION T_rgbPicture.toString: string;
   VAR i:longint;
-    c: T_rgbColor;
+      c: T_rgbColor;
+      pixelColors:T_arrayOfString;
   begin
     result:='['+intToStr(width)+',[';
+    setLength(pixelColors,width*height);
     for i:=0 to width*height-1 do begin
       c:=Pixels[i];
-      if i>0 then result+=',';
-      result+='['+intToStr(c[0])+','+intToStr(c[1])+','+intToStr(c[2])+']';
+      pixelColors[i]:='['+byteStrings[c[0]]+','+byteStrings[c[1]]+','+byteStrings[c[2]]+']';
     end;
-    result+=']]';
+    result+=join(pixelColors,',')+']]';
   end;
 
 FUNCTION T_rgbPicture.load(fileStream: TFileStream): boolean;
@@ -185,6 +188,10 @@ PROCEDURE T_rgbPicture.write(fileStream: TFileStream);
     fileStream.write(Pixels^,sizeOf(T_rgbColor)*width*height);
     fileStream.write(mass,sizeOf(mass));
   end;
+
+VAR k:longint;
+initialization
+  for k:=0 to 255 do byteStrings[k]:=IntToStr(k);
 
 end.
 

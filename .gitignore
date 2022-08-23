@@ -7,3 +7,5 @@
 /burnProject.lps
 *.anim
 *.dump
+*.datastore0
+/*/grav*.mnh

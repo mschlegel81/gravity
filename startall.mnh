@@ -1,27 +1,33 @@
 #!C:\bin\mnh.exe -quiet -convertPrintToLog -logDateFmt hh:mm:ss.zzz -logLocationLength 20 +log stdOut(2)
 wt:='C:\Users\mschl\AppData\Local\Microsoft\WindowsApps\wt.exe';// -d %CD% -p "grav 32" cmd /c grav32.exe'
 
-parameters(execName:String,closeAfter:Boolean,replay:Boolean)->['-d',execName.extractFileDirectory.systemSpecificFilename,
-                              '-p','"'&execName&'"',
-                              'cmd',closeAfter ? '/c' : '/k',execName,
-                              execName.matches('low_density') ? 'ld' :
-                              execName.matches('high_density') ? 'hd' : void,
-                              replay ? 'replay' : void];
-gravExes:=allFiles('.','grav*.exe').map(::expandedFileName).map(::systemSpecificFilename);
+parameters(execName:String,closeAfter:Boolean,replay:Boolean)->
+  ['-d',execName.extractFileDirectory.systemSpecificFilename,
+   '-p','"'&execName&'"',
+   'cmd',closeAfter ? '/c' : '/k',execName,
+   execName.matches('low_density') ? 'ld' :
+   execName.matches('high_density') ? 'hd' : void,
+   replay ? 'replay' : void];
+memoized gravExes->allFiles('.','grav*.exe').map(::expandedFileName).map(::systemSpecificFilename);
+memoized mnhFiles->allFiles('.','*.mnh').filter((f)->f.extractFileDirectory<>'.' AND f.matches('grav\d+\.mnh'));
+
 runningGravTasks->getTaskInfo.map((i)->gravExes[!pos(gravExes,i['commandLine']).isInfinite][0]).toSet;
 
 start(closeAfter:Boolean,replay:Boolean)->begin
   local alreadyRunning:=runningGravTasks;
+
+  local load:=[getCPULoadPercentage];
+  localAsync({while(true,load:=(load | sleep(1) | getCPULoadPercentage).trailing(16))});
+
   local startedCount:=0;
   gravExes
-  .filter((f)->!matches(f,'highTolerance'))
   .sort
   .map((n)->n.extractFileNameOnly.clean(['0'..'9'],'').softCast=>n)
   .sort(1).reverseList.sort(0).reverseList.getInner(1)
   .each(execName,execName in alreadyRunning
                  ? log('          ',execName,' is already running')
                  : begin
-                     while((getCPULoadPercentage)>80,sleep(1));
+                     while(load.size<16 OR load.max>=75,sleep(1));
                      log('Starting: ',execName);
                      assert(exec(wt,parameters(execName,closeAfter,replay))[1]=0);
                      startedCount+=1;
@@ -39,36 +45,9 @@ main->start(true,false);
 main('k')->start(false,false);
 
 //*Start in replay mode
-main('r')->start(true,true);
-
-main('graph')->begin
-  assertGuiStarted;
-  local masses:=gravExes.pMap((l)->l.changeFileExt('.log')).map((f)->begin
-    local m:=f.fileLines.split("mass=").getInner(1).trim.softCast;
-    m.size=0
-    ? void
-    : [f.extractFileNameOnly.clean(['0'..'9'],'').softCast,
-       f.extractFileDirectory.extractFileNameOnly,
-       m];
-  end);
-
-  local sizes:=masses.getInner(0).unique;
-  local densities:=masses.getInner(1).unique;
-  sizes.each(s,begin
-    local data:=masses.sort.filter((m)->m[0]=s).getInner(2);
-    setOptions(["x0"=>-1,"x1"=>1,"y0"=>-1,"y1"=>1,"fontsize"=>10,"preserveAspect"=>false,"autoscaleX"=>true,"autoscaleY"=>true,"logscaleX"=>false,"logscaleY"=>true,"autoscaleFactor"=>1,"axisStyleX"=>7,"axisStyleY"=>7].toMap);
-    plot();
-    drawTextAbsolute(1,1,'System size='&s,'TR');
-    data.each(row,addPlot(row));
-    addAnimationFrame;
-  end);
-  densities.each(d,begin
-    local data:=masses.sort.filter((m)->m[1]=d).getInner(2);
-    setOptions(["x0"=>-1,"x1"=>1,"y0"=>-1,"y1"=>1,"fontsize"=>10,"preserveAspect"=>false,"autoscaleX"=>true,"autoscaleY"=>true,"logscaleX"=>false,"logscaleY"=>true,"autoscaleFactor"=>1,"axisStyleX"=>7,"axisStyleY"=>7].toMap);
-    plot();
-    drawTextAbsolute(1,1,d,'TR');
-    data.each(row,addPlot(row));
-    addAnimationFrame;
-  end);
+main('r')->begin
+  mnhFiles.pEach(script,execPipeless(executor,[script]));
+  start(true,true);
 end;
 
+main('list')->printf('%s',gravExes.sort | mnhFiles.sort);

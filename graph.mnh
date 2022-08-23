@@ -1,0 +1,47 @@
+
+datastore data:=[].toMap;
+
+updateData->begin
+  local current:=
+  allFiles('.','*.log').pMap((l)->l.changeFileExt('.log')).map((f)->begin
+    local m:=f.fileLines.split("mass=").getInner(1).trim.softCast;
+    m.size=0
+    ? void
+    : [f,m];
+  end).toMap;
+  data:=mergeMaps(data,current,(x,y)->y.size>x.size ? y : x);
+end;
+
+
+main->begin
+  assertGuiStarted;
+  local masses:=
+  updateData.map((entry)->[entry[0].extractFileNameOnly.clean(['0'..'9'],'').softCast,
+       entry[0].extractFileDirectory.extractFileNameOnly.copy(2),
+       entry[1]]);
+
+  setOptions(["x0"=>-1,"x1"=>1,"y0"=>-1,"y1"=>1,"fontsize"=>10,"preserveAspect"=>false,"autoscaleX"=>true,"autoscaleY"=>true,"logscaleX"=>false,"logscaleY"=>true,"autoscaleFactor"=>1,"axisStyleX"=>7,"axisStyleY"=>7].toMap);
+
+  local sizes    :=masses.getInner(0).unique;
+  local densities:=masses.getInner(1).unique;
+
+  local COL:=['black','red','blue','green','RGB0.6,0,0.8'];
+  COL:=([sizes    ,COL.head(sizes    .size)].transpose |
+        [densities,COL.head(densities.size)].transpose).toMap;
+
+  sizes.each(s,begin
+    local data:=masses.sort.filter((m)->m[0]=s);
+    plot();
+    drawTextAbsolute(1,1,'System size='&s,'TR');
+    data.each(row,addPlot(row[2],COL[row[1]]));
+    addAnimationFrame;
+  end);
+
+  densities.each(d,begin
+    local data:=masses.sort.filter((m)->m[1]=d);
+    plot();
+    drawTextAbsolute(1,1,d,'TR');
+    data.each(row,addPlot(row[2],COL[row[0]]));
+    addAnimationFrame;
+  end);
+end;

@@ -9,7 +9,24 @@ main->begin
   existing
   .sort
   .filter((f)->f.changeFileExt('') in recreatable)
-  .map((f)->[f=>f.fileStats[2]])
-  .agg((f)->log('Deleting ',f[0],deleteFile(f[0]) ? begin freedCount+=1; freedBytes+=f[1]; ' o.k.' end : ' FAILED'));
+  .map((f)->[f,f.fileInfo['size']])
+  .agg((f)->log('Deleting ',f[0],deleteFile(f[0]) ? begin freedCount+=1; freedBytes+=f[1]; ' o.k.'; end : ' FAILED'));
+
+  existing   :=union(allFiles('.','*.anim'),
+                     allFiles('.','*.dump'),
+                     allFiles('.','*.exe' ));
+  recreatable:=intersect(
+               allFiles('.','*.mnh').map((s)->s.changeFileExt('')),
+               allFiles('.','*.datastore0').map((s)->s.changeFileExt('')));
+  existing
+  .sort
+  .filter((f)->f.changeFileExt('') in recreatable)
+  .map((f)->[f,f.fileInfo['size']])
+  .agg((f)->log('Deleting ',f[0],deleteFile(f[0]) ? begin freedCount+=1; freedBytes+=f[1]; ' o.k.'; end : ' FAILED'));
+
+
+  log(floor(freedBytes),'bytes in ',freedCount,' files freed');
   log(floor(freedBytes/1024),'kB in ',freedCount,' files freed');
+  log(floor(freedBytes/1024²),'MB in ',freedCount,' files freed');
+  log(floor(freedBytes/1024²),'GB in ',freedCount,' files freed');
 end;

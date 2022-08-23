@@ -100,7 +100,7 @@ PROCEDURE ensureAttractionFactors;
     VAR f:double;
     begin
       f:=sqrt(sqr(rx)+sqr(ry));
-      f:=1/(f*f*f*GRID_SIZE*GRID_SIZE);
+      f:=1/(f*f*f);
       result[0]:=rx*f;
       result[1]:=ry*f;
     end;
@@ -165,7 +165,6 @@ PROCEDURE ensureAttractionFactors;
 { T_cellSystem }
 CONSTRUCTOR T_cellSystem.create;
   VAR i,j:longint;
-      p:T_2dVector;
       massFactor:double;
   begin
     assign(logHandle,ChangeFileExt(paramStr(0),'.log'));
@@ -176,12 +175,7 @@ CONSTRUCTOR T_cellSystem.create;
     else if hasCmdLineParameter(PARAM_HIGH_DENSITY) then massFactor:=  1
     else                                                 massFactor:=  10;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
-      value[i,j].mass:=massFactor+0.01*random;
-      //repeat
-      //  p[0]:=1-2*random;
-      //  p[1]:=1-2*random;
-      //until p[0]*p[0]+p[1]*p[1]<1;
-      //value[i,j].p:=p*value[i,j].mass;
+      value[i,j].mass:=massFactor+0.001*random;
       value[i,j].p:=zeroVec;
     end;
   end;
@@ -196,14 +190,8 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
   PROCEDURE resetAcceleration;
     VAR i,j:longint;
     begin
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
-        //gradient[0]:=(value[(i+         1) mod SYS_SIZE,j].mass)-
-        //             (value[(i+SYS_SIZE-1) mod SYS_SIZE,j].mass);
-        //gradient[1]:=(value[i,(j+         1) mod SYS_SIZE].mass)-
-        //             (value[i,(j+SYS_SIZE-1) mod SYS_SIZE].mass);
-        //accel[i,j]:=gradient*(-0.5);
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do
         accel[i,j]:=zeroVec;
-      end;
     end;
 
   PROCEDURE addGravAcceleration;
@@ -217,8 +205,8 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
     end;
 
   PROCEDURE annihilate(CONST dtEff:TmyFloat);
-    CONST MASS_DIFFUSED=1E-2;
-          MASS_LOST    =1E-4;
+    CONST MASS_DIFFUSED=2E-2;
+          MASS_LOST    =3E-5;
           threshold    =5;
           dv:array[-1..1,-1..1] of T_2dVector=(((-7.071, -7.071),(-10,0),(-7.071, 7.071)),
                                                (( 0.0  ,-10    ),(  0,0),(     0,10    )),
@@ -348,7 +336,7 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
     end;
     m:=0;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do m+=value[i,j].mass;
-
+    m*=GRID_SIZE*GRID_SIZE;
     append(logHandle);
     writeln(logHandle,'Step done: ',(now-start)*24*60*60:0:5,'s; ',subStepsToTake,' sub steps; mass=',m:0:6);
     writeln(          'Step done: ',(now-start)*24*60*60:0:5,'s; ',subStepsToTake,' sub steps; mass=',m:0:6);
@@ -390,7 +378,7 @@ FUNCTION T_cellSystem.getPicture(CONST displayWidth, displayHeight: longint): P_
       result^.pixel[i,j]:=colorOf(mass);
       totalMass+=mass;
     end;
-    result^.mass:=totalMass;
+    result^.mass:=totalMass*GRID_SIZE*GRID_SIZE;
   end;
 
 FUNCTION T_cellSystem.getSerialVersion: dword;

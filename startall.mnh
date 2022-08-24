@@ -1,7 +1,6 @@
-#!C:\bin\mnh.exe -quiet -convertPrintToLog -logDateFmt hh:mm:ss.zzz -logLocationLength 20 +log stdOut(2)
 wt:='C:\Users\mschl\AppData\Local\Microsoft\WindowsApps\wt.exe';// -d %CD% -p "grav 32" cmd /c grav32.exe'
 
-parameters(execName:String,closeAfter:Boolean,replay:Boolean)->
+parameters(execName:String,replay:Boolean)->
   ['-d',execName.extractFileDirectory.systemSpecificFilename,
    execName,
    execName.matches('low_density') ? 'ld' :
@@ -29,7 +28,7 @@ end;
 
 BLOCKS:=[0..100].map((l)->[" ","▁","▂","▃","▄","▅","▆","▇","█"][floor(l*9/101)]);
 
-start(closeAfter:Boolean,replay:Boolean)->begin
+start(replay:Boolean)->begin
   local alreadyRunning:=runningGravTasks;
 
   local load:=[getCPULoadPercentage];
@@ -48,7 +47,7 @@ start(closeAfter:Boolean,replay:Boolean)->begin
                        sleep(1);
                      end);
                      tPrint('Starting: ',execName);
-                     assert(exec(wt,parameters(execName,closeAfter,replay))[1]=0);
+                     assert(exec(wt,parameters(execName,replay))[1]=0);
                      startedCount+=1;
                      while(execName not in (alreadyRunning:=runningGravTasks),sleep(0.1));
                    end);
@@ -58,15 +57,12 @@ start(closeAfter:Boolean,replay:Boolean)->begin
 end;
 
 //*Start and close after finish
-main->start(true,false);
-
-//*Start and keep open
-main('k')->start(false,false);
+main->start(false);
 
 //*Start in replay mode
 main('r')->begin
   mnhFiles.pEach(script,execPipeless(executor,[script]));
-  start(true,true);
+  start(true);
 end;
 
 //*Decompress all compressed files

@@ -209,8 +209,8 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
     end;
 
   PROCEDURE annihilate(CONST dtEff:TmyFloat);
-    CONST MASS_DIFFUSED=2E-2;
-          MASS_LOST    =3E-5;
+    CONST MASS_DIFFUSED=1E-2;
+          MASS_LOST    =1E-4;
           threshold    =5;
           dv:array[-1..1,-1..1] of T_2dVector=(((-7.071, -7.071),(-10,0),(-7.071, 7.071)),
                                                (( 0.0  ,-10    ),(  0,0),(     0,10    )),
@@ -228,19 +228,23 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
         with value[i,j] do begin
           v0  :=p*(1/mass);
 
-          factor:=dtEff*mass*(mass-threshold);
-          massDiffusion:=factor*MASS_DIFFUSED;
+          factor:=dtEff*(mass-threshold);
+          massDiffusion:=mass*factor*MASS_DIFFUSED/GRID_SIZE;
           factor              *=MASS_LOST;
 
           mass*=(1-factor);
           p   *=(1-factor);
+          factor:=mass*0.5;
+          if massDiffusion>factor then massDiffusion:=factor;
+          factor:=(mass-threshold);
+          if factor<0 then factor:=0 else factor*=factor*0.00001;
         end;
 
         //Blowout:
+        if massDiffusion>0 then
         for di:=-1 to 1 do for dj:=-1 to 1 do with nextValue[(i+di+SYS_SIZE) mod SYS_SIZE,(j+dj+SYS_SIZE) mod SYS_SIZE] do begin
-          v_:=v0+dv[di,dj];
+          v_:=v0+dv[di,dj]*factor;
           m_:=massDiffusion*BLOW[di,dj];
-
           mass+=m_;
           p   +=v_*m_;
         end;
@@ -302,16 +306,13 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
     addGravAcceleration;
     subStepsToTake:=getSubStepsToTake;
     dtSub:=dt/subStepsToTake;
-    nextValue:=zeroSystem;
-    annihilate(dtSub);
 
     for sub:=1 to subStepsToTake do begin
       if sub>1 then begin
         resetAcceleration;
         addGravAcceleration;
-        nextValue:=zeroSystem;
-        annihilate(dtSub);
       end;
+      nextValue:=zeroSystem;
 
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
         m:=value[i,j].mass;
@@ -342,6 +343,13 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
         nextValue[ti,tj_].p   +=v*w;
       end;
       value:=nextValue;
+
+      nextValue:=zeroSystem;
+      annihilate(dtSub);
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
+        mass+=nextValue[i,j].mass;
+        p   +=nextValue[i,j].p;
+      end;
     end;
     m:=0;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do m+=value[i,j].mass;

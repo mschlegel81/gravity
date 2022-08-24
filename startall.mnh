@@ -3,8 +3,7 @@ wt:='C:\Users\mschl\AppData\Local\Microsoft\WindowsApps\wt.exe';// -d %CD% -p "g
 
 parameters(execName:String,closeAfter:Boolean,replay:Boolean)->
   ['-d',execName.extractFileDirectory.systemSpecificFilename,
-   '-p','"'&execName&'"',
-   'cmd',closeAfter ? '/c' : '/k',execName,
+   execName,
    execName.matches('low_density') ? 'ld' :
    execName.matches('high_density') ? 'hd' : void,
    replay ? 'replay' : void];
@@ -13,11 +12,28 @@ memoized mnhFiles->allFiles('.','*.mnh').filter((f)->f.extractFileDirectory<>'.'
 
 runningGravTasks->getTaskInfo.map((i)->gravExes[!pos(gravExes,i['commandLine']).isInfinite][0]).toSet;
 
+
+mutable toClear:=0;
+tPrint(...)->begin
+  local out:=join([formatTime("hh:mm.ss",systime),' ']|...);
+  out&=repeat(' ',toClear-out.length);
+  print("\r",out);
+  toClear:=0;
+end;
+
+tPrintD(...)->begin
+  local out:=join([formatTime("hh:mm.ss",systime),' ']|...);
+  out&=repeat(' ',toClear-(toClear:=out.length));
+  printDirect("\r",out);
+end;
+
+BLOCKS:=[0..100].map((l)->[" ","▁","▂","▃","▄","▅","▆","▇","█"][floor(l*9/101)]);
+
 start(closeAfter:Boolean,replay:Boolean)->begin
   local alreadyRunning:=runningGravTasks;
 
   local load:=[getCPULoadPercentage];
-  localAsync({while(true,load:=(load | sleep(1) | getCPULoadPercentage).trailing(16))});
+  localAsync({while(true,load:=(load | sleep(0.1) | getCPULoadPercentage).trailing(32))});
 
   local startedCount:=0;
   gravExes
@@ -25,17 +41,20 @@ start(closeAfter:Boolean,replay:Boolean)->begin
   .map((n)->n.extractFileNameOnly.clean(['0'..'9'],'').softCast=>n)
   .sort(1).reverseList.sort(0).reverseList.getInner(1)
   .each(execName,execName in alreadyRunning
-                 ? log('          ',execName,' is already running')
+                 ? tPrint('          ',execName,' is already running')
                  : begin
-                     while(load.size<16 OR load.max>=75,sleep(1));
-                     log('Starting: ',execName);
+                     while(load.size<16 OR max(load-[load.size-1..0])>=75,begin
+                       tPrintD('Next:     ',execName,"; CPU Load: ",BLOCKS[load].join);
+                       sleep(1);
+                     end);
+                     tPrint('Starting: ',execName);
                      assert(exec(wt,parameters(execName,closeAfter,replay))[1]=0);
                      startedCount+=1;
                      while(execName not in (alreadyRunning:=runningGravTasks),sleep(0.1));
                    end);
-  log(startedCount,' tasks started');
+  tPrint(startedCount,' tasks started');
   alreadyRunning:=getTaskInfo.map((i)->i['commandLine']).filter((cl)->!pos(gravExes,cl).isInfinite.agg(and));
-  log(alreadyRunning.size,' tasks are running: ',join("\n  "&sort(alreadyRunning)));
+  tPrint(alreadyRunning.size,' tasks are running: ',join("\n  "&sort(alreadyRunning)));
 end;
 
 //*Start and close after finish
@@ -50,4 +69,8 @@ main('r')->begin
   start(true,true);
 end;
 
+//*Decompress all compressed files
+main('d')->mnhFiles.pEach(script,execPipeless(executor,[script]));
+
+//*List available packages
 main('list')->printf('%s',gravExes.sort | mnhFiles.sort);

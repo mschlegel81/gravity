@@ -24,9 +24,8 @@ main->begin
   .map((f)->[f,f.fileInfo['size']])
   .agg((f)->log('Deleting ',f[0],deleteFile(f[0]) ? begin freedCount+=1; freedBytes+=f[1]; ' o.k.'; end : ' FAILED'));
 
-
-  log(floor(freedBytes),'bytes in ',freedCount,' files freed');
-  log(floor(freedBytes/1024),'kB in ',freedCount,' files freed');
-  log(floor(freedBytes/1024²),'MB in ',freedCount,' files freed');
-  log(floor(freedBytes/1024²),'GB in ',freedCount,' files freed');
+  log( floor(freedBytes      ),"\tbytes in ",freedCount,' files freed',
+  "\n",floor(freedBytes/1024 ),"\tkB",
+  "\n",floor(freedBytes/1024²),"\tMB",
+  "\n",floor(freedBytes/1024³),"\tGB");
 end;

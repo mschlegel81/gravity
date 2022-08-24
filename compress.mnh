@@ -25,7 +25,7 @@ compressSet(s)->begin
       log('Writing ',targetMnh);
       writeFileLines(targetMnh,
         ['datastore filestore;',
-         'main->begin',
+         'main->'&filestore.getInner(0).each(n,format('fileExists(%s)',n.escape)).join(' AND ')&' ? void : '&'begin',
          '  myPath.extractFileDirectory.changeDirectory;',
          '  filestore.each(entry,entry[0].writeFile(entry[1]));',
          'end;']);

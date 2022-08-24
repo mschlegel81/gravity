@@ -190,8 +190,8 @@ PROCEDURE T_rgbPicture.write(fileStream: TFileStream);
   end;
 
 VAR k:longint;
-initialization
-  for k:=0 to 255 do byteStrings[k]:=IntToStr(k);
+INITIALIZATION
+  for k:=0 to 255 do byteStrings[k]:=intToStr(k);
 
 end.
 

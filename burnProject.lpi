@@ -45,7 +45,8 @@
             </Debugging>
           </Linking>
           <Other>
-            <CustomOptions Value="-dSYS_SIZE:=32"/>
+            <CustomOptions Value="-dSYS_SIZE:=32
+-CfAVX2"/>
             <OtherDefines Count="1">
               <Define0 Value="size=50"/>
             </OtherDefines>
@@ -81,7 +82,8 @@
             </Debugging>
           </Linking>
           <Other>
-            <CustomOptions Value="-dSYS_SIZE:=64"/>
+            <CustomOptions Value="-dSYS_SIZE:=64
+-CfAVX2"/>
             <OtherDefines Count="1">
               <Define0 Value="size=50"/>
             </OtherDefines>
@@ -117,7 +119,8 @@
             </Debugging>
           </Linking>
           <Other>
-            <CustomOptions Value="-dSYS_SIZE:=128"/>
+            <CustomOptions Value="-dSYS_SIZE:=128
+-CfAVX2"/>
             <OtherDefines Count="1">
               <Define0 Value="size=50"/>
             </OtherDefines>
@@ -153,7 +156,8 @@
             </Debugging>
           </Linking>
           <Other>
-            <CustomOptions Value="-dSYS_SIZE:=256"/>
+            <CustomOptions Value="-dSYS_SIZE:=256
+-CfAVX2"/>
             <OtherDefines Count="1">
               <Define0 Value="size=50"/>
             </OtherDefines>

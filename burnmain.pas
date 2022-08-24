@@ -47,6 +47,22 @@ FUNCTION calcThread(p:pointer):ptrint;
       handle:  textFile;
       animStream: TFileStream;
       replaying: boolean;
+
+  PROCEDURE addPicture(CONST writeAnimStream:boolean);
+    begin
+      if writeAnimStream then begin
+        picture^.write(animStream);
+        sys.saveToFile(fileName_dump);
+      end else begin
+        writeln(logHandle,'Replay; mass=',picture^.mass:0:6);
+        writeln(          'Replay; mass=',picture^.mass:0:6);
+      end;
+      writeln(handle,picture^.toString);
+      framesInQueue:=queue^.addFrame(picture);
+      inc(calcFrameCount);
+
+    end;
+
   begin
     randomize;
     assign(handle,filename_txt);
@@ -64,27 +80,21 @@ FUNCTION calcThread(p:pointer):ptrint;
       repeat
         new(picture,create(SYS_SIZE,SYS_SIZE));
         replaying:=picture^.load(animStream);
-        if replaying then begin
-          writeln(logHandle,'Replay; mass=',picture^.mass:0:6);
-          writeln(          'Replay; mass=',picture^.mass:0:6);
-          writeln(handle,picture^.toString);
-          framesInQueue:=queue^.addFrame(picture);
-          inc(calcFrameCount);
-        end else dispose(picture,destroy);
+        if replaying
+        then addPicture(false)
+        else dispose(picture,destroy);
       until not(replaying) or closing;
       close(logHandle);
     end else begin
       animStream:=TFileStream.create(fileName_anim,fmCreate);
       animStream.Seek(0,soBeginning);
+      picture:=sys.getPicture(BurnForm.width,BurnForm.height);
+      addPicture(true);
     end;
     while not(closing) and (calcFrameCount<5000) and not(hasCmdLineParameter(PARAM_REPLAY)) do begin
       sys.doMacroTimeStep;
       picture:=sys.getPicture(BurnForm.width,BurnForm.height);
-      picture^.write(animStream);
-      sys.saveToFile(fileName_dump);
-      writeln(handle,picture^.toString);
-      framesInQueue:=queue^.addFrame(picture);
-      inc(calcFrameCount);
+      addPicture(true);
       if framesInQueue>aheadTarget then sleep(framesInQueue-aheadTarget);
     end;
     close(handle);

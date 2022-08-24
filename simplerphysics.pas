@@ -6,7 +6,7 @@ INTERFACE
 USES basicGraphics,serializationUtil;
 
 CONST
-  SYMMETRIC_CONTINUATION=20;//4096 div SYS_SIZE;
+  SYMMETRIC_CONTINUATION=20;
   dt             =0.05;
   GRID_SIZE      =1;
   MAX_ACCELERATION_RANGE=GRID_SIZE*0.5;
@@ -174,9 +174,9 @@ CONSTRUCTOR T_cellSystem.create;
     if      hasCmdLineParameter(PARAM_LOW_DENSITY)  then massFactor:=0.1
     else if hasCmdLineParameter(PARAM_HIGH_DENSITY) then massFactor:=  1
     else                                                 massFactor:=  10;
-    for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
-      value[i,j].mass:=massFactor+0.001*random;
-      value[i,j].p:=zeroVec;
+    for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
+      mass:=massFactor+0.001*random;
+      p:=zeroVec;
     end;
   end;
 
@@ -196,12 +196,16 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
 
   PROCEDURE addGravAcceleration;
     VAR i,j,oi,oj:longint;
+        a: T_2dVector;
     begin
       for i:=0 to SYS_SIZE-1 do
-      for oi:=0 to SYS_SIZE-1 do
-      for j:=0 to SYS_SIZE-1 do
-      for oj:=0 to SYS_SIZE-1 do
-        accel[i,j]+=cachedAttraction[oi-i,oj-j]*value[oi,oj].mass;
+      for j:=0 to SYS_SIZE-1 do begin
+        a:=accel[i,j];
+        for oi:=0 to SYS_SIZE-1 do
+        for oj:=0 to SYS_SIZE-1 do
+          a+=cachedAttraction[oi-i,oj-j]*value[oi,oj].mass;
+        accel[i,j]:=a;
+      end;
     end;
 
   PROCEDURE annihilate(CONST dtEff:TmyFloat);
@@ -264,13 +268,18 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
   FUNCTION getSubStepsToTake:longint;
     VAR i,j:longint;
         X:TmyFloat=0;
+        Vmax:TmyFloat=0;
         N:TmyFloat;
     begin
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do if value[i,j].mass>1E-2 then begin
         N:=sqr(accel[i,j,0])+sqr(accel[i,j,1]);
         if N>X then X:=N;
+        N:=(sqr(value[i,j].p[0])+sqr(value[i,j].p[1]))/sqr(value[i,j].mass);
+        if N>Vmax then Vmax:=N;
       end;
       result:=trunc(sqrt(sqrt(X)/MAX_ACCELERATION_RANGE)*dt+1);
+      i     :=trunc(sqrt(Vmax)*dt*0.5+1);
+      if result<i then result:=i;
       if result<1 then result:=1
       else if result>100 then result:=100;
     end;

@@ -171,9 +171,9 @@ CONSTRUCTOR T_cellSystem.create;
     rewrite(logHandle);
     close(logHandle);
 
-    if      hasCmdLineParameter(PARAM_LOW_DENSITY)  then massFactor:=0.1
-    else if hasCmdLineParameter(PARAM_HIGH_DENSITY) then massFactor:=  1
-    else                                                 massFactor:=  10;
+    if      hasCmdLineParameter(PARAM_LOW_DENSITY)  then massFactor:= 0.1
+    else if hasCmdLineParameter(PARAM_HIGH_DENSITY) then massFactor:= 1
+    else                                                 massFactor:=10;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
       mass:=massFactor+0.001*random;
       p:=zeroVec;
@@ -209,8 +209,8 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
     end;
 
   PROCEDURE annihilate(CONST dtEff:TmyFloat);
-    CONST MASS_DIFFUSED=1E-2;
-          MASS_LOST    =1E-4;
+    CONST MASS_DIFFUSED=0.5;
+          MASS_LOST    =1E-2;
           threshold    =5;
           dv:array[-1..1,-1..1] of T_2dVector=(((-7.071, -7.071),(-10,0),(-7.071, 7.071)),
                                                (( 0.0  ,-10    ),(  0,0),(     0,10    )),
@@ -227,17 +227,16 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do if value[i,j].mass>threshold then begin
         with value[i,j] do begin
           v0  :=p*(1/mass);
-
           factor:=dtEff*(mass-threshold);
           massDiffusion:=mass*factor*MASS_DIFFUSED/GRID_SIZE;
           factor              *=MASS_LOST;
 
           mass*=(1-factor);
           p   *=(1-factor);
-          factor:=mass*0.5;
+          factor:=mass*0.2;
           if massDiffusion>factor then massDiffusion:=factor;
           factor:=(mass-threshold);
-          if factor<0 then factor:=0 else factor*=factor*0.00001;
+          if factor<0 then factor:=0 else factor*=0.0001;
         end;
 
         //Blowout:
@@ -248,6 +247,10 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
           mass+=m_;
           p   +=v_*m_;
         end;
+      end else with value[i,j] do begin
+        v0:=p*(1/(mass+1E-10));
+        mass+=2E-3*random*dtEff;
+        p:=v0*(mass+1E-10);
       end;
     end;
 

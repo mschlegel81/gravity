@@ -1,62 +1,75 @@
-replay(filename,export:Boolean)->begin
+replay(filename,export:Boolean)->fileExists(filename) ? begin
   log('Reading ',filename);
   local bytesRead:=0;
   local frames:=0;
   local lastBytesRead:=0;
   local lastFrames:=0;
-  local lastOutputTime:=0;
+  local lastOutputTime:=scriptTime;
 
   local doLog:=(suffix)->begin
     log('Reading @',round((frames   -lastFrames   )/(scriptTime-lastOutputTime)),'fps / ',
                     round((bytesRead-lastBytesRead)/(scriptTime-lastOutputTime)/1024),'kbps; (',frames,'frames /',round(bytesRead/1024²),'MiB)',suffix);
-    lastOutputTime:=scriptTime;
-    lastFrames:=frames;
-    lastBytesRead:=bytesRead;
   end;
 
   local index:=-1;
+  local res:=filename.extractFileNameOnly.clean(['0'..'9'],'').softCast;
+  assert(res in [32,64,128,256]);
+  local chunkSize:=res*res*3;
 
-  fileLineIterator(filename)
-  .map((line)->[filename.changeFileExt(format('_%4.4d.png',index+=1)),line.byteLength,line])
-  .pMap((D)->export AND fileExists(D[0]) ? void : begin
-     local data:=try(::interpret,[D[2]]);
-     data.isVoid ? void : [D[0],D[1],[data[1]*(1/255),data[0]]];
-   end)
-  .agg((d)->begin
+  filename.extractFileExt.lower='.txt'
+  ? fileLineIterator(filename)
+    .map((line)->[filename.changeFileExt(format('_%4.4d.png',index+=1)),begin bytesRead+=line.byteLength; line; end])
+    .map((D)->export AND fileExists(D[0])
+              ? void
+              : begin
+                  local data:=try(::interpret,[D[1]]);
+                  data.isVoid ? void : [D[0],[data[1]*(1/255),data[0]]];
+                end)
+  : byteStreamIterator(filename,chunkSize+8)
+    .map((line)->[filename.changeFileExt(format('_%4.4d.png',index+=1)),begin bytesRead+=line.size; line; end])
+    .map((D)->export AND fileExists(D[0])
+              ? void
+              : [D[0],[chunkMap(D[1].head(chunkSize)*(1/255),3).toList,res]])
+  .agg((d)->begin      //agg	@[MNH]:3,1	1	43059.349ms	4564.750ms
+    plotRasterImage@(d[1]);
     export
     ? begin
-        plotRasterImage@(d[2]);
-        log('Writing ',d[0]);
-        renderToFile(d[0],d[2,1],d[2,1],true);
+        doLog(' '&d[0]);
+        renderToFile(d[0],d[1,1],d[1,1],true);
       end
     : begin
-        plotRasterImage@(d[2]);
+        doLog('');
         addAnimationFrame;
         postDisplay;
       end;
     frames+=1;
-    bytesRead+=d[1];
-    scriptTime>lastOutputTime+1
-    ? doLog('')
-    : void;
   end);
   callMemoryCleaner;
   doLog(' - EOF');
-end;
+end : void;
+
+replayableFiles:=allFiles('.','grav*.txt').pMap((l)->begin
+    local k:=0;
+    fileLineIterator(l).each(l,k+=1).trailing;
+    [l,k];
+  end).|(
+  allFiles('.','grav*.anim').map((l)->begin
+    local res:=l.extractFileNameOnly.clean(['0'..'9'],'').softCast;
+    assert(res in [32,64,128,256]);
+    local chunkSize:=res*res*3+8;
+    [l,fileInfo(l)['size'] div chunkSize];
+  end))
+  .sort
+  .map((k)->[k[0].expandedFileName.relativeFileName,k[1]]);
 
 //*Replay with an ask dialog
 main->begin
   assertGuiStarted;
-  ask('Which file to replay?',allFiles('.','grav*.txt').map((n)->relativeFileName(myPath,n).systemSpecificFilename)).replay(false);
+  ask('Which file to replay?',replayableFiles.getInner(0)).replay(false);
 end;
 
 //*List files with respective line counts
-main('list')->
-allFiles('.','grav*.txt').pMap((l)->begin
-  local k:=0;
-  fileLineIterator(l).each(l,k+=1).trailing;
-  join([replace('#'&l,'#./',''),k],"\t");
-end).join("\n").print;
+main('list')->printf('%s',replayableFiles.map((e)->join(e,"\t")));
 
 //*Replay a specific file
 main(filename)->begin
@@ -66,4 +79,5 @@ end;
 
 //*Create png graphics for given files
 main('png',filename,...)->
-  files(filename|...).filter((f)->f.extractFileExt.lower=='.txt').each(f,replay(f,true));
+  files(filename|...).filter((f)->f.extractFileExt.lower=='.anim').each(f,try(::replay,[f,true],::warn));
+

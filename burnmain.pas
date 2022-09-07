@@ -44,7 +44,7 @@ FUNCTION calcThread(p:pointer):ptrint;
       sys:T_cellSystem;
       framesInQueue:longint=-1;
       picture: P_rgbPicture;
-      handle:  textFile;
+      //handle:  textFile;
       animStream: TFileStream;
       replaying: boolean;
 
@@ -55,9 +55,7 @@ FUNCTION calcThread(p:pointer):ptrint;
         sys.saveToFile(fileName_dump);
       end else begin
         writeln(logHandle,'Replay; mass=',picture^.mass:0:6);
-        writeln(          'Replay; mass=',picture^.mass:0:6);
       end;
-      writeln(handle,picture^.toString);
       framesInQueue:=queue^.addFrame(picture);
       inc(calcFrameCount);
 
@@ -65,13 +63,12 @@ FUNCTION calcThread(p:pointer):ptrint;
 
   begin
     randomize;
-    assign(handle,filename_txt);
-    rewrite(handle);
+    //assign(handle,filename_txt);
+    //rewrite(handle);
     queue:=P_animation(p);
     sys.create;
     if fileExists(fileName_dump) and fileExists(fileName_anim) and not(hasCmdLineParameter(PARAM_RESTART)) then begin
       if not(sys.loadFromFile(fileName_dump)) then begin
-        writeln('FATAL ERROR ON RESTORING DUMP');
         halt(1);
       end;
       animStream:=TFileStream.create(fileName_anim,fmOpenReadWrite);
@@ -97,12 +94,14 @@ FUNCTION calcThread(p:pointer):ptrint;
       addPicture(true);
       if framesInQueue>aheadTarget then sleep(framesInQueue-aheadTarget);
     end;
-    close(handle);
+    //close(handle);
     animStream.destroy;
     sys.destroy;
     result:=0;
     threadRunning:=false;
-    writeln('Calculation thread stopped');
+    append(logHandle);
+    writeln(logHandle,'Calculation thread stopped');
+    close(logHandle);
     if hasCmdLineParameter(PARAM_CLOSE) then closing:=true;
   end;
 

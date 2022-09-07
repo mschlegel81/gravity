@@ -16,7 +16,6 @@ begin
   RequireDerivedFormResource:=true;
   Application.title:='Gravity xxx';
   Application.title:='Gravity '+intToStr(SYS_SIZE);
-  Application.Scaled:=true;
   Application.initialize;
   Application.CreateForm(TBurnForm, BurnForm);
   Application.run;

@@ -6,7 +6,7 @@ INTERFACE
 USES basicGraphics,serializationUtil;
 
 CONST
-  SYMMETRIC_CONTINUATION=1;
+  SYMMETRIC_CONTINUATION=20;
   dt             =0.05;
   GRID_SIZE      =1;
   MAX_ACCELERATION_RANGE=GRID_SIZE*0.5;
@@ -95,14 +95,12 @@ OPERATOR -(CONST x,y:T_2dVector):T_2dVector;
 
 VAR zeroSystem:T_value;
     sinus_table:array[0..SYS_SIZE-1] of TmyFloat;
-    box:array[0..SYS_SIZE-1] of set of byte;
 PROCEDURE ensureAttractionFactors;
   FUNCTION straightAttraction(CONST rx,ry:TmyFloat):T_2dVector;
     VAR f:double;
     begin
-      f:=sqrt(sqr(rx)+sqr(ry));
-      if f<20 then f:=1/f*(1/(f*f)-0.0025)
-              else f:=0;
+      f:=sqr(rx)+sqr(ry);
+      f:=0.2*(sin(f*pi/256))/f;
       result[0]:=rx*f;
       result[1]:=ry*f;
     end;
@@ -131,6 +129,8 @@ PROCEDURE ensureAttractionFactors;
                                    y+GAUSS_LEGENDRE_WEIGHT[n,j].d)*
                                     (GAUSS_LEGENDRE_WEIGHT[n,i].w*
                                      GAUSS_LEGENDRE_WEIGHT[n,j].w);
+
+      if distance>SYS_SIZE*SYS_SIZE then result*=exp(-0.5*(distance*(1/SYS_SIZE*SYS_SIZE)-1));
     end;
 
   VAR ix,iy:longint;
@@ -160,10 +160,6 @@ PROCEDURE ensureAttractionFactors;
         p:=zeroVec;
       end;
       for ix:=0 to SYS_SIZE-1 do sinus_table[ix]:=sin(ix*2*pi/SYS_SIZE);
-      for ix:=0 to SYS_SIZE-1 do begin
-        box[ix]:=[];
-        for iy:=ix-20+SYS_SIZE to ix+20+SYS_SIZE do include(box[ix],byte(iy mod SYS_SIZE));
-      end;
       attractionInitialized:=true;
     end;
   end;
@@ -209,8 +205,8 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
       for i:=0 to SYS_SIZE-1 do
       for j:=0 to SYS_SIZE-1 do begin
         a:=accel[i,j];
-        for oi in box[i] do
-        for oj in box[j] do
+        for oi:=0 to SYS_SIZE-1 do
+        for oj:=0 to SYS_SIZE-1 do
           a+=cachedAttraction[oi-i,oj-j]*value[oi,oj].mass;
         accel[i,j]:=a;
       end;
@@ -218,7 +214,7 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
 
   PROCEDURE annihilate(CONST dtEff:TmyFloat);
     CONST MASS_DIFFUSED=1E-3;
-          MASS_LOST    =1E-6;
+          MASS_LOST    =1E-5;
           threshold    =5;
           dv:array[-1..1,-1..1] of T_2dVector=(((-7.071, -7.071),(-10,0),(-7.071, 7.071)),
                                                (( 0.0  ,-10    ),(  0,0),(     0,10    )),
@@ -242,20 +238,18 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
 
           mass*=(1-factor);
           p   *=(1-factor);
-          //factor:=mass*0.2;
-          //if massDiffusion>factor then massDiffusion:=factor;
-          //factor:=mass*2*GRID_SIZE;
-          //if mass>100 then factor*=10;
+          factor:=mass*0.2;
+          if massDiffusion>factor then massDiffusion:=factor;
         end;
 
-        ////Blowout:
-        //if massDiffusion>0 then
-        //for di:=-1 to 1 do for dj:=-1 to 1 do with nextValue[(i+di+SYS_SIZE) mod SYS_SIZE,(j+dj+SYS_SIZE) mod SYS_SIZE] do begin
-        //  v_:=v0+dv[di,dj];
-        //  m_:=massDiffusion*BLOW[di,dj];
-        //  mass+=m_;
-        //  p   +=v_*m_;
-        //end;
+        //Blowout:
+        if massDiffusion>0 then
+        for di:=-1 to 1 do for dj:=-1 to 1 do with nextValue[(i+di+SYS_SIZE) mod SYS_SIZE,(j+dj+SYS_SIZE) mod SYS_SIZE] do begin
+          v_:=v0+dv[di,dj];
+          m_:=massDiffusion*BLOW[di,dj];
+          mass+=m_;
+          p   +=v_*m_;
+        end;
       end;
     end;
 
@@ -352,7 +346,7 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
       value:=nextValue;
 
       nextValue:=zeroSystem;
-      annihilate(dtSub);
+      //annihilate(dtSub);
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
         mass+=nextValue[i,j].mass;
         p   +=nextValue[i,j].p;

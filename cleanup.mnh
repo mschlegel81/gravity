@@ -1,4 +1,9 @@
+USE startall;
+
 main->begin
+  local blocked:=runningGravTasks.map((n)->n.changeFileExt('')).relativeFileName.toSet;
+  local unblockedFilter:=(f)->f.changeFileExt('').expandedFileName.relativeFileName not in blocked;
+
   local recreatable:=intersect(
                      allFiles('.','*.anim').map((s)->s.changeFileExt('')),
                      allFiles('.','*.dump').map((s)->s.changeFileExt('')),
@@ -9,18 +14,28 @@ main->begin
   existing
   .sort
   .filter((f)->f.changeFileExt('') in recreatable)
+  .filter(unblockedFilter)
+  .|(files('compress.datastore*'))
   .map((f)->[f,f.fileInfo['size']])
   .agg((f)->log('Deleting ',f[0],deleteFile(f[0]) ? begin freedCount+=1; freedBytes+=f[1]; ' o.k.'; end : ' FAILED'));
 
   existing   :=union(allFiles('.','*.anim'),
                      allFiles('.','*.dump'),
-                     allFiles('.','*.exe' ));
-  recreatable:=intersect(
-               allFiles('.','*.mnh').map((s)->s.changeFileExt('')),
-               allFiles('.','*.datastore0').map((s)->s.changeFileExt('')));
+                     allFiles('.','*.exe' )).filter((f)->f.changeFileExt('').relativeFileName not in blocked);
+  local root:=expandedFileName('.');
+  existing.map((f)->f.changeFileExt('.mnh').expandedFileName.systemSpecificFilename)
+          .unique
+          .filter(::fileExists)
+          .each(f,changeDirectory(f.extractFileDirectory),
+                  exec(executor,[f,'check']));
+  changeDirectory(root);
+
+  recreatable:=intersect(allFiles('.','*.mnh').map((s)->s.changeFileExt('')),
+                         allFiles('.','*.dat').map((s)->s.changeFileExt('')));
   existing
   .sort
   .filter((f)->f.changeFileExt('') in recreatable)
+  .filter(unblockedFilter)
   .map((f)->[f,f.fileInfo['size']])
   .agg((f)->log('Deleting ',f[0],deleteFile(f[0]) ? begin freedCount+=1; freedBytes+=f[1]; ' o.k.'; end : ' FAILED'));
 

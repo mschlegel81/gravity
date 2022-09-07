@@ -101,7 +101,7 @@ PROCEDURE ensureAttractionFactors;
     VAR f:double;
     begin
       f:=sqrt(sqr(rx)+sqr(ry));
-      if f<20 then f:=1/f*(1/(f*f)-0.0025)
+      if f<20 then f:=0.1*(cos(f*0.39269908169872414))/f
               else f:=0;
       result[0]:=rx*f;
       result[1]:=ry*f;
@@ -131,6 +131,8 @@ PROCEDURE ensureAttractionFactors;
                                    y+GAUSS_LEGENDRE_WEIGHT[n,j].d)*
                                     (GAUSS_LEGENDRE_WEIGHT[n,i].w*
                                      GAUSS_LEGENDRE_WEIGHT[n,j].w);
+
+      if distance>SYS_SIZE*SYS_SIZE then result*=exp(-0.5*(distance*(1/SYS_SIZE*SYS_SIZE)-1));
     end;
 
   VAR ix,iy:longint;
@@ -218,7 +220,7 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
 
   PROCEDURE annihilate(CONST dtEff:TmyFloat);
     CONST MASS_DIFFUSED=1E-3;
-          MASS_LOST    =1E-6;
+          MASS_LOST    =2E-3;
           threshold    =5;
           dv:array[-1..1,-1..1] of T_2dVector=(((-7.071, -7.071),(-10,0),(-7.071, 7.071)),
                                                (( 0.0  ,-10    ),(  0,0),(     0,10    )),
@@ -242,20 +244,22 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
 
           mass*=(1-factor);
           p   *=(1-factor);
-          //factor:=mass*0.2;
-          //if massDiffusion>factor then massDiffusion:=factor;
-          //factor:=mass*2*GRID_SIZE;
-          //if mass>100 then factor*=10;
+          factor:=mass*0.2;
+          if massDiffusion>factor then massDiffusion:=factor;
         end;
 
-        ////Blowout:
-        //if massDiffusion>0 then
-        //for di:=-1 to 1 do for dj:=-1 to 1 do with nextValue[(i+di+SYS_SIZE) mod SYS_SIZE,(j+dj+SYS_SIZE) mod SYS_SIZE] do begin
-        //  v_:=v0+dv[di,dj];
-        //  m_:=massDiffusion*BLOW[di,dj];
-        //  mass+=m_;
-        //  p   +=v_*m_;
-        //end;
+        //Blowout:
+        if massDiffusion>0 then
+        for di:=-1 to 1 do for dj:=-1 to 1 do with nextValue[(i+di+SYS_SIZE) mod SYS_SIZE,(j+dj+SYS_SIZE) mod SYS_SIZE] do begin
+          v_:=v0+dv[di,dj];
+          m_:=massDiffusion*BLOW[di,dj];
+          mass+=m_;
+          p   +=v_*m_;
+        end;
+      end else with value[i,j] do if mass<1 then begin
+        v0:=p*(1/(mass+1E-10));
+        mass+=1E-3*dtEff;
+        p:=v0*(mass+1E-10);
       end;
     end;
 

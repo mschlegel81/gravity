@@ -9,3 +9,5 @@
 *.dump
 *.datastore0
 /*/grav*.mnh
+grav*.dat
+grav*.png

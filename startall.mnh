@@ -1,16 +1,45 @@
-wt:='C:\Users\mschl\AppData\Local\Microsoft\WindowsApps\wt.exe';// -d %CD% -p "grav 32" cmd /c grav32.exe'
+SEVEN_ZIP:='7z.exe';
+WINDOWS_TERMINAL:='wt.exe';
 
-parameters(execName:String,replay:Boolean)->
-  ['-d',execName.extractFileDirectory.systemSpecificFilename,
-   execName,
-   execName.matches('low_density') ? 'ld' :
-   execName.matches('high_density') ? 'hd' : void,
-   replay ? 'replay' : void];
-memoized gravExes->allFiles('.','grav*.exe').map(::expandedFileName).map(::systemSpecificFilename);
+datastore paths:=void;
+
+@SuppressUnusedWarning
+ensurePaths:=paths orElse paths:=begin
+  log("Paths of external executables are not set.\nThis may take a while...");
+  local lookFor:=[SEVEN_ZIP,WINDOWS_TERMINAL];
+  local all:=allFiles(folders('C:\*prog*')|getEnv['USERPROFILE'],lookFor);
+  lookFor.each(l,l|all.filter((path)->path.extractFileName.lower=l.lower).sort((x,y)->x.length<=y.length).head)
+         .filter((entry)->entry.size=2)
+         .toMap;
+end;
+
+execute(execName:String,replay:Boolean)->
+  paths[WINDOWS_TERMINAL].isVoid OR true
+  ? execAsync(execName,[execName.matches('low_density') ? 'ld' :
+                        execName.matches('high_density') ? 'hd' : void,
+                        replay ? 'replay' : void].{$L==[] ? void : $L})
+  : assert(exec(paths[WINDOWS_TERMINAL],['-d',execName.extractFileDirectory.systemSpecificFilename,
+                         execName,
+                         execName.matches('low_density') ? 'ld' :
+                         execName.matches('high_density') ? 'hd' : void,
+                         replay ? 'replay' : void])[1]=0);
+
+synchronized gravExes->begin
+  local result:=void;
+  local resultTime:=-600;
+save;
+  scriptTime>resultTime+60
+  ? begin
+      result:=allFiles('.','grav*.exe').map(::expandedFileName).map(::systemSpecificFilename);
+      resultTime:=scriptTime;
+    end
+  : void;
+  result;
+end;
+
 memoized mnhFiles->allFiles('.','*.mnh').filter((f)->f.extractFileDirectory<>'.' AND f.matches('grav\d+\.mnh'));
 
 runningGravTasks->getTaskInfo.map((i)->gravExes[!pos(gravExes,i['commandLine']).isInfinite][0]).toSet;
-
 
 mutable toClear:=0;
 tPrint(...)->begin
@@ -26,47 +55,143 @@ tPrintD(...)->begin
   printDirect("\r",out);
 end;
 
-BLOCKS:=[0..100].map((l)->[" ","▁","▂","▃","▄","▅","▆","▇","█"][floor(l*9/101)]);
+BLOCKS:=[0..100].map((l)->[" ","▁","▂","▃","▄","▅","▆","▇","█"][floor(l*9/101)])|'!';
+
+SKIP:='skip';
+FORCE:='force';
+QUIT:='quit';
+
+exeSorting(L:StringCollection)->L.map((n)->n.extractFileNameOnly.clean(['0'..'9'],'').softCast=>n).sort(1).sort(0).getInner(1);
+
 
 start(replay:Boolean)->begin
+  assertUniqueInstance;
+  local CPU_threshold:=replay ? 85 : 50;
   local alreadyRunning:=runningGravTasks;
+  local firstQuestion:=true;
+  local userSignal:='';
+  localAsync({while(true,begin
+    userSignal:=ask('Next element in queue...',[SKIP,FORCE,QUIT],firstQuestion);
+    firstQuestion:=false;
+  end)});
 
   local load:=[getCPULoadPercentage];
-  localAsync({while(true,load:=(load | sleep(0.1) | getCPULoadPercentage).trailing(32))});
+  localAsync({while(true,begin
+    sleep(0.1);
+    local c:=getCPULoadPercentage;
+    load:=(load|c).trailing(32);
+  end)});
 
   local startedCount:=0;
   gravExes
-  .sort
-  .map((n)->n.extractFileNameOnly.clean(['0'..'9'],'').softCast=>n)
-  .sort(1).reverseList.sort(0).reverseList.getInner(1)
+  .exeSorting
   .each(execName,execName in alreadyRunning
-                 ? tPrint('          ',execName,' is already running')
+                 ? tPrint('          ',execName.relativeFileName,' is already running')
                  : begin
-                     while(load.size<16 OR max(load-[load.size-1..0])>=75,begin
-                       tPrintD('Next:     ',execName,"; CPU Load: ",BLOCKS[load].join);
-                       sleep(1);
+                     userSignal:=userSignal==QUIT ? QUIT : '';
+                     while((load.size<16 OR max(load-[load.size-1..0])>=CPU_threshold) AND (userSignal==''),begin
+                       tPrintD('Next:     ',execName.relativeFileName,"; CPU: ",BLOCKS[load].join,load.trailing,'%');
+                       sleep(0.1);
                      end);
-                     tPrint('Starting: ',execName);
-                     assert(exec(wt,parameters(execName,replay))[1]=0);
-                     startedCount+=1;
-                     while(execName not in (alreadyRunning:=runningGravTasks),sleep(0.1));
+                     userSignal in [SKIP,QUIT]
+                     ? tPrint('Skipping: ',execName.relativeFileName)
+                     : begin
+                         userSignal==FORCE
+                         ? tPrint('Forced:   ',execName.relativeFileName)
+                         : tPrint('Starting: ',execName.relativeFileName);
+                         execute(execName,replay);
+                         startedCount+=1;
+                         load|=min(101,load.trailing+(100 div mnhInfo['configured_cpus']));
+                         while(execName not in (alreadyRunning:=runningGravTasks),sleep(0.1));
+                       end;
                    end);
   tPrint(startedCount,' tasks started');
   alreadyRunning:=getTaskInfo.map((i)->i['commandLine']).filter((cl)->!pos(gravExes,cl).isInfinite.agg(and));
   tPrint(alreadyRunning.size,' tasks are running: ',join("\n  "&sort(alreadyRunning)));
 end;
 
-//*Start and close after finish
+//*Start in calculation mode
 main->start(false);
 
 //*Start in replay mode
-main('r')->begin
-  mnhFiles.pEach(script,execPipeless(executor,[script]));
-  start(true);
-end;
+main('r')->start(true);
 
-//*Decompress all compressed files
+////*Decompress all compressed files
 main('d')->mnhFiles.pEach(script,execPipeless(executor,[script]));
 
-//*List available packages
-main('list')->printf('%s',gravExes.sort | mnhFiles.sort);
+//*List executables (exe) and compressed executables (mnh)
+main('list')->begin
+  local f:=(gravExes | mnhFiles).expandedFileName.relativeFileName;
+  f:=[f.extractFileDirectory,f.extractFileName].transpose;
+  local allNames      :=f.getInner(1).unique;
+
+  f.getInner(0).unique.each(dir,join([dir,': ']|allNames.map((n)->[dir,n] in f ? n : ''),"\t"))
+   .join("\n").print;
+end;
+
+watcher(filename:String)->{begin
+  local it:=fileLineIterator(filename,600);
+  local latestResult:='---';
+  localAsync({begin
+    local n:=void;
+    while(!isVoid(n:=it()),latestResult:=n);
+  end});
+save;
+  latestResult;
+end};
+
+//*Watch all log files
+main('w')->begin
+  local userSignal:='';
+  localAsync({begin userSignal:=ask('Next element in queue...',[QUIT],false); end});
+  local logs:=runningGravTasks
+    .exeSorting
+    .filter((e)->e.changeFileExt('.log').fileExists)
+    .map((e)->begin
+       local key:=e.relativeFileName.changeFileExt('');
+       [key,watcher(e.changeFileExt('.log')),'-'];
+     end);
+
+  local nextScanForNewTasks:=scriptTime+10;
+  local lastOut:=0;
+  local out:=[[],[]];
+  while(userSignal=='',begin
+    local anyChanged:=false;
+    scriptTime>=nextScanForNewTasks
+    ? begin
+        local currentRunning:=runningGravTasks.exeSorting.filter((e)->e.changeFileExt('.log').fileExists);
+        currentRunning.map((e)->e.relativeFileName.changeFileExt('')).sort == logs.getInner(0).sort
+        ? void
+        : begin
+            local previousEntries:=logs.map((l)->l[0]=>l).toMap;
+            logs:=currentRunning
+                  .map((e)->begin
+                     local key:=e.relativeFileName.changeFileExt('');
+                     previousEntries[key] orElse [key,watcher(e.changeFileExt('.log')),'-'];
+                   end);
+            anyChanged:=true;
+          end;
+        nextScanForNewTasks:=scriptTime+10;
+      end
+    : void;
+
+    logs:=logs.each(e,begin local n:=e[1](); n==e[2] ? e : begin anyChanged:=true; [e[0],e[1],n]; end; end);
+
+    anyChanged
+    ? out:=[logs.getInner(0),logs.getInner(2)]
+    : void;
+
+    (scriptTime>lastOut+0.1) AND !isVoid(out)
+    ? begin
+        out==[[],[]]
+        ? print(#12#10"No running tasks at ",formatTime(systime))
+        : print(#12"\n"&formatTabs(join("%s:\t%s".format@out,"\n")).join("\n"));
+        out:=void;
+        lastOut:=scriptTime;
+      end
+    : void;
+
+    anyChanged ? void : sleep(1);
+  end);
+end;
+

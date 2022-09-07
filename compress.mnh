@@ -1,37 +1,88 @@
-#!C:\bin\mnh_light.exe -quiet -headless -convertPrintToLog -logDateFmt hh:mm:ss -logLocationLength 14 +log stdOut(1)
+#!C:\bin\mnh_light.exe -quiet -convertPrintToLog -logDateFmt hh:mm:ss -logLocationLength 14 +log stdOut(2)
+USE startall;
+
+@SuppressUnusedWarning
+CLEANUP_BEFORE:=files(myPath.changeFileExt('.datastore*')).agg(::deleteFile);
+
+mutable workAllowed:=begin
+  assert(!isVoid(paths[SEVEN_ZIP]),'No 7-zip found');
+  true;
+end;
+
+@SuppressUnusedWarning
+cancelTask:=async({begin ask('',['Quit'],false); workAllowed:=false; end});
+
+blocked->begin
+  local scanInterval:=30;
+  local lastQuery:=scriptTime-scanInterval;
+  local lastResponse:=[];
+save;
+  scriptTime+scanInterval>lastQuery
+  ? begin
+      lastResponse:=runningGravTasks.map((n)->n.changeFileExt('')).relativeFileName.toSet;
+      lastQuery:=scriptTime;
+    end
+  : void;
+  lastResponse;
+end;
+
+//datastore filestore;
+//datastoreName:=changeFileExt(myPath,'.datastore0');
+//compressSet(s)->workAllowed AND begin
+//  local set:=files(['.anim','.exe','.dump'].map((e)->s.changeFileExt(e))).sort;
+//  local targetMnh:=s.changeFileExt('.mnh');
+//  local targetDat:=s.changeFileExt('.datastore0');
+//  log('Creating set: ',s);
+//  (set.size==3)                                             ? void : return log('Set is incomplete') orElse false;
+//  (!fileExists(targetMnh) OR !fileExists(targetDat))        ? void : return log('Set is already compressed') orElse false;
+//  (set[2].expandedFileName.relativeFileName not in blocked) ? void : return log('Set is blocked') orElse false;
+//  filestore:=set.map((f)->f.extractFileName=>f.fileContents);
+//  log('Writing ',targetDat);
+//  writeDataStores;
+//  copyFile(datastoreName,targetDat);
+//  log('Writing ',targetMnh);
+//  writeFileLines(targetMnh,
+//    ['datastore filestore;',
+//     'main("check")->fileInfo('+filestore[0,0].escape+')["size"]>'&fileInfo(set[0])['size']&' ? begin deleteFile(myPath.changeFileExt(".datastore0")); deleteFile(myPath); end : void;',
+//     'main->'&filestore.getInner(0).each(n,format('fileExists(%s)',n.escape)).join(' AND ')&' ? main("check") : begin',
+//     '  myPath.extractFileDirectory.changeDirectory;',
+//     '  filestore.each(entry,entry[0].writeFile(entry[1]));',
+//     'end;']);
+//  log('Done (set: ',s,')');
+//  true;
+//end;
+
+memoized compressSet(s)->workAllowed AND begin
+  local set:=files(['.anim','.exe','.dump'].map((e)->s.changeFileExt(e))).sort;
+  local targetMnh:=s.changeFileExt('.mnh');
+  local targetZip:=s.changeFileExt('.dat');
+  set.size==3                                               ? void : return note('Set ',s,' is incomplete') orElse false;
+  (!fileExists(targetZip) OR !fileExists(targetMnh))        ? void : return note('Set ',s,' is already compressed') orElse false;
+  (set[2].expandedFileName.relativeFileName not in blocked) ? void : return note('Set ',s,' is blocked') orElse false;
+  deleteFile(targetZip);
+  log('Writing ',targetZip);
+
+  exec(paths[SEVEN_ZIP],['u','-mx8','-mmt2','-sfx',targetZip]|set);
+  log('Writing ',targetMnh);
+  local linesToWrite:=[
+     'main("check")->fileInfo('+set[0].extractFileName.escape+')["size"]>'&fileInfo(set[0])['size']&' OR !fileExists(myPath.changeFileExt(".dat")) ? begin deleteFile(myPath.changeFileExt(".dat")); deleteFile(myPath); end : void;',
+     'main->'&set.each(n,format('fileExists(%s)',n.extractFileName.escape)).join(' AND ')&' ? main("check") : begin changeDirectory(myPath.extractFileDirectory); execPipeless(myPath.changeFileExt(".dat")); end;'];
+  writeFileLines(targetMnh,linesToWrite);
+  log('Done (set: ',s,')');
+  true;
+end;
+
 main(firstPattern,...)->begin
   files(firstPattern|...)
     .flatten
-    .map((f)->f.changeFileExt(''))
+    .map((f)->f.expandedFileName.changeFileExt(''))
     .unique
     .each(f,compressSet(f));
   log('Finished');
 end;
 
-datastore filestore;
-datastoreName:=changeFileExt(myPath,'.datastore0');
-compressSet(s)->begin
-  local set:=files(['.anim','.exe','.dump'].map((e)->s.changeFileExt(e))).sort;
-  local targetMnh:=s.changeFileExt('.mnh');
-  local targetDat:=s.changeFileExt('.datastore0');
-
-  (set.size==3) and (!fileExists(targetMnh) OR !fileExists(targetDat))
-  ? begin
-      log('Creating set: ',s);
-      filestore:=set.map((f)->f.extractFileName=>f.fileContents);
-      log('Writing ',targetDat);
-      writeDataStores;
-      copyFile(datastoreName,targetDat);
-      log('Writing ',targetMnh);
-      writeFileLines(targetMnh,
-        ['datastore filestore;',
-         'main->'&filestore.getInner(0).each(n,format('fileExists(%s)',n.escape)).join(' AND ')&' ? void : '&'begin',
-         '  myPath.extractFileDirectory.changeDirectory;',
-         '  filestore.each(entry,entry[0].writeFile(entry[1]));',
-         'end;']);
-      log('Done (set: ',s,')');
-    end
-  : void;
+main->begin
+  assertUniqueInstance;
+  while(allFiles('.','*.log').filter((f)->f.fileStats[0]>=4999).map((f)->f.changeFileExt('')).unique.each(f,compressSet(f),OR));
+  log('Finished');
 end;
-
-main->allFiles('.','*.log').filter((f)->f.fileStats[0]>=5000).map((f)->f.changeFileExt('')).unique.each(f,compressSet(f));

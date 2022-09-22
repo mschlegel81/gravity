@@ -33,7 +33,7 @@ TYPE
       CONSTRUCTOR create;
       DESTRUCTOR destroy;
 
-      FUNCTION doMacroTimeStep:boolean;
+      FUNCTION doMacroTimeStep(CONST index:longint):boolean;
       FUNCTION getPicture(CONST displayWidth,displayHeight:longint):P_rgbPicture;
       FUNCTION getSerialVersion:dword; virtual;
       FUNCTION loadFromStream(VAR stream:T_bufferedInputStreamWrapper):boolean; virtual;
@@ -96,15 +96,23 @@ OPERATOR -(CONST x,y:T_2dVector):T_2dVector;
 VAR zeroSystem:T_value;
     sinus_table:array[0..SYS_SIZE-1] of TmyFloat;
     box:array[0..SYS_SIZE-1] of set of byte;
-PROCEDURE ensureAttractionFactors;
+PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
+  VAR angle:double=0;
+
   FUNCTION straightAttraction(CONST rx,ry:TmyFloat):T_2dVector;
-    VAR f:double;
+    VAR f,a:double;
+        cang:double=1;
+        sang:double=0;
     begin
       f:=sqrt(sqr(rx)+sqr(ry));
-      if f<20 then f:=1/f*(1/(f*f)-0.0025)
-              else f:=0;
-      result[0]:=rx*f;
-      result[1]:=ry*f;
+      if f<20 then begin
+        a:=angle+(f-10)*pi/40;
+        cang:=cos(a);
+        sang:=sin(a);
+        f:=(1/f-1/20)/f;
+	    result[0]:=(rx*cang+ry*sang)*f;
+        result[1]:=(ry*cang-rx*sang)*f;
+      end else result:=zeroVec;
     end;
 
   FUNCTION calculateAttraction(CONST x,y:longint):T_2dVector;
@@ -137,16 +145,13 @@ PROCEDURE ensureAttractionFactors;
       symX,symY:longint;
   begin
     if not(attractionInitialized) then begin
+      angle:=(1+cos(pi*stepIndex/5000))*pi;
       append(logHandle);
-	  writeln(logHandle,'Initializing gravity factors');
-	  close(logHandle);
+      writeln(logHandle,'Reinitializing attraction factors with angle ',(round(angle*180/pi)+180) mod 360 - 180,'°');
+      close(logHandle);
       for ix:=-SYS_SIZE+1 to SYS_SIZE-1 do for iy:=-SYS_SIZE+1 to SYS_SIZE-1 do begin
-        if (iy>0) then begin
-          cachedAttraction[ix,iy]:=cachedAttraction[ix,-iy];
-          cachedAttraction[ix,iy,1]:=-cachedAttraction[ix,iy,1];
-        end else if (ix>0) then begin
-          cachedAttraction[ix,iy]:=cachedAttraction[-ix,iy];
-          cachedAttraction[ix,iy,0]:=-cachedAttraction[ix,iy,0];
+        if (ix>0) then begin
+          cachedAttraction[ix,iy]:=cachedAttraction[-ix,-iy]*(-1);
         end else begin
           cachedAttraction[ix][iy]:=zeroVec;
           if (ix<>0) or (iy<>0) then
@@ -182,8 +187,10 @@ CONSTRUCTOR T_cellSystem.create;
     else                                                 massFactor:=10;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
       mass:=massFactor+0.001*random;
-      //mass:=0;
       p:=zeroVec;
+      if j<SYS_SIZE div 2
+      then p[0]:= mass
+      else p[0]:=-mass;
     end;
     //i:=SYS_SIZE div 2; value[i,i].mass:=100;
   end;
@@ -192,7 +199,7 @@ DESTRUCTOR T_cellSystem.destroy;
   begin
   end;
 
-FUNCTION T_cellSystem.doMacroTimeStep: boolean;
+FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
   VAR accel:array[0..SYS_SIZE-1,0..SYS_SIZE-1] of T_2dVector;
 
   PROCEDURE resetAcceleration;
@@ -218,7 +225,7 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
 
   PROCEDURE annihilate(CONST dtEff:TmyFloat);
     CONST MASS_DIFFUSED=1E-3;
-          MASS_LOST    =1E-6;
+          MASS_LOST=1E-3;
           threshold    =5;
           dv:array[-1..1,-1..1] of T_2dVector=(((-7.071, -7.071),(-10,0),(-7.071, 7.071)),
                                                (( 0.0  ,-10    ),(  0,0),(     0,10    )),
@@ -228,7 +235,9 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
            (0.160187,-0.999996,0.160187),
            (0.089812, 0.160187,0.089812));
     VAR i,j:longint;
-        factor, massDiffusion, m_:TmyFloat;
+        factor,
+        massDiffusion,
+        m_:TmyFloat;
         di,dj:longint;
         v0, v_:T_2dVector;
     begin
@@ -236,26 +245,27 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
         with value[i,j] do begin
           v0  :=p*(1/mass);
           factor:=dtEff*(mass-threshold);
-          if mass>100 then factor*=100;
-          massDiffusion:=mass*factor*MASS_DIFFUSED/GRID_SIZE;
+          massDiffusion:=factor*MASS_DIFFUSED;
           factor*=MASS_LOST;
-
+          if factor>0.5 then factor:=0.5;
           mass*=(1-factor);
           p   *=(1-factor);
-          //factor:=mass*0.2;
-          //if massDiffusion>factor then massDiffusion:=factor;
-          //factor:=mass*2*GRID_SIZE;
-          //if mass>100 then factor*=10;
+          factor:=mass*0.2;
+          if massDiffusion>factor then massDiffusion:=factor;
         end;
 
-        ////Blowout:
-        //if massDiffusion>0 then
-        //for di:=-1 to 1 do for dj:=-1 to 1 do with nextValue[(i+di+SYS_SIZE) mod SYS_SIZE,(j+dj+SYS_SIZE) mod SYS_SIZE] do begin
-        //  v_:=v0+dv[di,dj];
-        //  m_:=massDiffusion*BLOW[di,dj];
-        //  mass+=m_;
-        //  p   +=v_*m_;
-        //end;
+        //Blowout:
+        if massDiffusion>0 then
+        for di:=-1 to 1 do for dj:=-1 to 1 do with nextValue[(i+di+SYS_SIZE) mod SYS_SIZE,(j+dj+SYS_SIZE) mod SYS_SIZE] do begin
+          v_:=v0+dv[di,dj]*2;
+          m_:=massDiffusion*BLOW[di,dj];
+          mass+=m_;
+          p   +=v_*m_;
+        end;
+      end else with value[i,j] do if mass<1 then begin
+        v0:=p*(1/(mass+1E-10));
+        mass+=3E-3*dtEff;
+        p:=v0*(mass+1E-10);
       end;
     end;
 
@@ -304,8 +314,9 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
       start:double;
 
   begin
-    ensureAttractionFactors();
     start:=now;
+    if index mod 20=0 then attractionInitialized:=false;
+    ensureAttractionFactors(index);
     result:=false;
     modifyVelocities;
 
@@ -362,7 +373,7 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do m+=value[i,j].mass;
     m*=GRID_SIZE*GRID_SIZE;
     append(logHandle);
-    writeln(logHandle,'Step done: ',(now-start)*24*60*60:0:5,'s; ',subStepsToTake,' sub steps; mass=',m:0:6);
+    writeln(logHandle,'Step ',index,' done: ',(now-start)*24*60*60:0:5,'s; ',subStepsToTake,' sub steps; mass=',m:0:6);
     close(logHandle);
   end;
 

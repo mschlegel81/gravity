@@ -1,28 +1,7 @@
-SEVEN_ZIP:='7z.exe';
-WINDOWS_TERMINAL:='wt.exe';
-
-datastore paths:=void;
-
-@SuppressUnusedWarning
-ensurePaths:=paths orElse paths:=begin
-  log("Paths of external executables are not set.\nThis may take a while...");
-  local lookFor:=[SEVEN_ZIP,WINDOWS_TERMINAL];
-  local all:=allFiles(folders('C:\*prog*')|getEnv['USERPROFILE'],lookFor);
-  lookFor.each(l,l|all.filter((path)->path.extractFileName.lower=l.lower).sort((x,y)->x.length<=y.length).head)
-         .filter((entry)->entry.size=2)
-         .toMap;
-end;
-
 execute(execName:String,replay:Boolean)->
-  paths[WINDOWS_TERMINAL].isVoid OR true
-  ? execAsync(execName,[execName.matches('low_density') ? 'ld' :
-                        execName.matches('high_density') ? 'hd' : void,
-                        replay ? 'replay' : void].{$L==[] ? void : $L})
-  : assert(exec(paths[WINDOWS_TERMINAL],['-d',execName.extractFileDirectory.systemSpecificFilename,
-                         execName,
-                         execName.matches('low_density') ? 'ld' :
-                         execName.matches('high_density') ? 'hd' : void,
-                         replay ? 'replay' : void])[1]=0);
+  execAsync(execName,[execName.matches('low_density') ? 'ld' :
+                      execName.matches('high_density') ? 'hd' : void,
+                      replay ? 'replay' : void].{$L==[] ? void : $L});
 
 synchronized gravExes->begin
   local result:=void;
@@ -85,8 +64,8 @@ start(replay:Boolean)->begin
   local startedCount:=0;
   gravExes
   .exeSorting
-  .each(execName,execName in alreadyRunning
-                 ? tPrint('          ',execName.relativeFileName,' is already running')
+  .each(execName,!fileExists(execName)      ? tPrint('          ',execName.relativeFileName,' has been deleted') :
+                 execName in alreadyRunning ? tPrint('          ',execName.relativeFileName,' is already running')
                  : begin
                      userSignal:=userSignal==QUIT ? QUIT : '';
                      while((load.size<16 OR max(load-[load.size-1..0])>=CPU_threshold) AND (userSignal==''),begin
@@ -116,8 +95,19 @@ main->start(false);
 //*Start in replay mode
 main('r')->start(true);
 
-////*Decompress all compressed files
-main('d')->mnhFiles.pEach(script,execPipeless(executor,[script]));
+//*Decompress all compressed files
+main('d')->mnhFiles.pEach(script,begin
+  print('Starting ',script);
+  assert(exec(executor,[script])[1]==0,'Script ',script,' failed');
+  print(script,' executed successfully');
+end);
+
+//*Decompress compressed files matching pattern
+main('d',pattern)->mnhFiles.filter((script)->script.matches(pattern)).pEach(script,begin
+  print('Starting ',script);
+  assert(exec(executor,[script])[1]==0,'Script ',script,' failed');
+  print(script,' executed successfully');
+end);
 
 //*List executables (exe) and compressed executables (mnh)
 main('list')->begin
@@ -131,31 +121,46 @@ end;
 
 watcher(filename:String)->{begin
   local it:=fileLineIterator(filename,600);
-  local latestResult:='---';
+  local trailSize:=100;
+  local trail:=[];
   localAsync({begin
     local n:=void;
-    while(!isVoid(n:=it()),latestResult:=n);
+    while(!isVoid(n:=it()),trail:=trailing(trail|("\t"&n),trailSize));
   end});
 save;
-  latestResult;
+  trailSize:=max(1,$trailSize);
+  trail.size>trailSize
+  ? trail.trailing(trailSize)
+  : trail;
 end};
 
 //*Watch all log files
 main('w')->begin
-  local userSignal:='';
-  localAsync({begin userSignal:=ask('Next element in queue...',[QUIT],false); end});
+  local killSignal:=false;
+  local linesTotal:=1;
+  local load:=[getCPULoadPercentage];
+  local cpuWidth:=32;
+  localAsync({while(!killSignal,load:=trailing(load|(sleep(0.5) orElse getCPULoadPercentage),cpuWidth))});
+
+  localAsync({begin local answer:=''; while(answer!=QUIT,begin
+    answer:=ask('?',[QUIT,'+','-'],false);
+    answer=='+' ? printDirect("\rLines: ",linesTotal+=1,'  ') :
+    answer=='-' ? printDirect("\rLines: ",linesTotal:=max(1,linesTotal-1),'  ') :
+    answer==QUIT ? killSignal:=true : void;
+  end); end});
   local logs:=runningGravTasks
     .exeSorting
     .filter((e)->e.changeFileExt('.log').fileExists)
     .map((e)->begin
        local key:=e.relativeFileName.changeFileExt('');
-       [key,watcher(e.changeFileExt('.log')),'-'];
+       [key,watcher(e.changeFileExt('.log')),['-']];
      end);
 
+  sleep(1);
+
   local nextScanForNewTasks:=scriptTime+10;
-  local lastOut:=0;
-  local out:=[[],[]];
-  while(userSignal=='',begin
+  local sleepTime:=0;
+  while(!killSignal,begin
     local anyChanged:=false;
     scriptTime>=nextScanForNewTasks
     ? begin
@@ -167,7 +172,7 @@ main('w')->begin
             logs:=currentRunning
                   .map((e)->begin
                      local key:=e.relativeFileName.changeFileExt('');
-                     previousEntries[key] orElse [key,watcher(e.changeFileExt('.log')),'-'];
+                     previousEntries[key] orElse [key,watcher(e.changeFileExt('.log')),['']];
                    end);
             anyChanged:=true;
           end;
@@ -175,23 +180,41 @@ main('w')->begin
       end
     : void;
 
-    logs:=logs.each(e,begin local n:=e[1](); n==e[2] ? e : begin anyChanged:=true; [e[0],e[1],n]; end; end);
+    logs:=logs.each(e,
+      begin
+        (local n:=e[1](linesTotal))==e[2]
+        ? e
+        : begin
+            anyChanged:=true;
+            [e[0],e[1],n];
+          end;
+      end);
 
     anyChanged
-    ? out:=[logs.getInner(0),logs.getInner(2)]
-    : void;
-
-    (scriptTime>lastOut+0.1) AND !isVoid(out)
     ? begin
-        out==[[],[]]
-        ? print(#12#10"No running tasks at ",formatTime(systime))
-        : print(#12"\n"&formatTabs(join("%s:\t%s".format@out,"\n")).join("\n"));
-        out:=void;
-        lastOut:=scriptTime;
+        local out:=logs.map((l)->[l[0],l[2]==[] ? [''] : l[2]]);
+        out.size==0 ? void : begin
+          local lines:=out.getInner(1).map(::size).agg(+);
+          while(lines>max(linesTotal,out.size),begin
+            local k:=argMax(out.getInner(1).map(::size));
+            out[k]:=begin
+                      lines-=1;
+                      [out[k,0],out[k,1].tail];
+                    end;
+          end);
+          cpuWidth:=1+out.getInner(0)        .map(::length).max
+                     +out.getInner(1).flatten.map(::length).max
+                   -9;
+          out:=out.each(o,o[0]&o[1].head,o[1].tail,|);
+        end;
+        while(out.size<linesTotal,out|="\t...");
+        clearPrint;
+        printf('%s',out);
       end
     : void;
+    printDirect("\rCPU ",BLOCKS[load].join,load.trailing,'% ');
 
-    anyChanged ? void : sleep(1);
+    anyChanged ? sleepTime:=0 : sleep(sleepTime:=1-(1-sleepTime)*0.9);
   end);
 end;
 

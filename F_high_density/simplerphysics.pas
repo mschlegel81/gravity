@@ -33,7 +33,7 @@ TYPE
       CONSTRUCTOR create;
       DESTRUCTOR destroy;
 
-      FUNCTION doMacroTimeStep:boolean;
+      FUNCTION doMacroTimeStep(CONST index:longint):boolean;
       FUNCTION getPicture(CONST displayWidth,displayHeight:longint):P_rgbPicture;
       FUNCTION getSerialVersion:dword; virtual;
       FUNCTION loadFromStream(VAR stream:T_bufferedInputStreamWrapper):boolean; virtual;
@@ -179,7 +179,7 @@ CONSTRUCTOR T_cellSystem.create;
     rewrite(logHandle);
     close(logHandle);
 
-    if      hasCmdLineParameter(PARAM_LOW_DENSITY)  then massFactor:= 0.1
+    if      hasCmdLineParameter(PARAM_LOW_DENSITY)  then massFactor:= 0
     else if hasCmdLineParameter(PARAM_HIGH_DENSITY) then massFactor:= 1
     else                                                 massFactor:=10;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
@@ -194,7 +194,7 @@ DESTRUCTOR T_cellSystem.destroy;
   begin
   end;
 
-FUNCTION T_cellSystem.doMacroTimeStep: boolean;
+FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
   VAR accel:array[0..SYS_SIZE-1,0..SYS_SIZE-1] of T_2dVector;
 
   PROCEDURE resetAcceleration;
@@ -366,7 +366,7 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do m+=value[i,j].mass;
     m*=GRID_SIZE*GRID_SIZE;
     append(logHandle);
-    writeln(logHandle,'Step done: ',(now-start)*24*60*60:0:5,'s; ',subStepsToTake,' sub steps; mass=',m:0:6);
+    writeln(logHandle,'Step ',index,' done: ',(now-start)*24*60*60:0:5,'s; ',subStepsToTake,' sub steps; mass=',m:0:6);
     close(logHandle);
   end;
 

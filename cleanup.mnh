@@ -15,7 +15,6 @@ main->begin
   .sort
   .filter((f)->f.changeFileExt('') in recreatable)
   .filter(unblockedFilter)
-  .|(files('compress.datastore*'))
   .map((f)->[f,f.fileInfo['size']])
   .agg((f)->log('Deleting ',f[0],deleteFile(f[0]) ? begin freedCount+=1; freedBytes+=f[1]; ' o.k.'; end : ' FAILED'));
 

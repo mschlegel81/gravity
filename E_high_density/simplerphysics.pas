@@ -33,7 +33,7 @@ TYPE
       CONSTRUCTOR create;
       DESTRUCTOR destroy;
 
-      FUNCTION doMacroTimeStep:boolean;
+      FUNCTION doMacroTimeStep(CONST index:longint):boolean;
       FUNCTION getPicture(CONST displayWidth,displayHeight:longint):P_rgbPicture;
       FUNCTION getSerialVersion:dword; virtual;
       FUNCTION loadFromStream(VAR stream:T_bufferedInputStreamWrapper):boolean; virtual;
@@ -100,9 +100,9 @@ PROCEDURE ensureAttractionFactors;
   FUNCTION straightAttraction(CONST rx,ry:TmyFloat):T_2dVector;
     VAR f:double;
     begin
-      f:=sqrt(sqr(rx)+sqr(ry));
-      if f<20 then f:=0.1*(cos(f*0.39269908169872414))/f
-              else f:=0;
+      f:=(sqr(rx)+sqr(ry));
+      if f<400 then f:=1/100
+               else f:=0;
       result[0]:=rx*f;
       result[1]:=ry*f;
     end;
@@ -179,7 +179,7 @@ CONSTRUCTOR T_cellSystem.create;
     rewrite(logHandle);
     close(logHandle);
 
-    if      hasCmdLineParameter(PARAM_LOW_DENSITY)  then massFactor:= 0.1
+    if      hasCmdLineParameter(PARAM_LOW_DENSITY)  then massFactor:= 0
     else if hasCmdLineParameter(PARAM_HIGH_DENSITY) then massFactor:= 1
     else                                                 massFactor:=10;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
@@ -194,7 +194,7 @@ DESTRUCTOR T_cellSystem.destroy;
   begin
   end;
 
-FUNCTION T_cellSystem.doMacroTimeStep: boolean;
+FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
   VAR accel:array[0..SYS_SIZE-1,0..SYS_SIZE-1] of T_2dVector;
 
   PROCEDURE resetAcceleration;
@@ -219,8 +219,8 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
     end;
 
   PROCEDURE annihilate(CONST dtEff:TmyFloat);
-    CONST MASS_DIFFUSED=1E-3;
-          MASS_LOST    =2E-3;
+    CONST MASS_DIFFUSED=1E-2;
+          MASS_LOST    =1E-2;
           threshold    =5;
           dv:array[-1..1,-1..1] of T_2dVector=(((-7.071, -7.071),(-10,0),(-7.071, 7.071)),
                                                (( 0.0  ,-10    ),(  0,0),(     0,10    )),
@@ -238,13 +238,12 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
         with value[i,j] do begin
           v0  :=p*(1/mass);
           factor:=dtEff*(mass-threshold);
-          if mass>100 then factor*=100;
           massDiffusion:=mass*factor*MASS_DIFFUSED/GRID_SIZE;
           factor*=MASS_LOST;
 
           mass*=(1-factor);
           p   *=(1-factor);
-          factor:=mass*0.2;
+          factor:=mass*0.5;
           if massDiffusion>factor then massDiffusion:=factor;
         end;
 
@@ -258,7 +257,7 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
         end;
       end else with value[i,j] do if mass<1 then begin
         v0:=p*(1/(mass+1E-10));
-        mass+=1E-3*dtEff;
+        mass+=5E-3*dtEff;
         p:=v0*(mass+1E-10);
       end;
     end;
@@ -366,7 +365,7 @@ FUNCTION T_cellSystem.doMacroTimeStep: boolean;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do m+=value[i,j].mass;
     m*=GRID_SIZE*GRID_SIZE;
     append(logHandle);
-    writeln(logHandle,'Step done: ',(now-start)*24*60*60:0:5,'s; ',subStepsToTake,' sub steps; mass=',m:0:6);
+    writeln(logHandle,'Step ',index,' done: ',(now-start)*24*60*60:0:5,'s; ',subStepsToTake,' sub steps; mass=',m:0:6);
     close(logHandle);
   end;
 

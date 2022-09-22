@@ -1,16 +1,30 @@
-plain script;
-allFiles('.','simplerPhysics.pas')
-.filter((e)->e.extractFileDirectory not in ['.','\backup','/backup','backup'])
-.map((e)->e.expandedFileName.relativeFileName.extractFileDirectory)
-.each(dir,
-  begin
-    log('Rebuilding ',dir);
-    copyFile(dir&'/simplerPhysics.pas','simplerPhysics.pas').assert;
-    exec('cmd',['/C','build.bat']);
-    local exes:=files('*.exe');
-    assert(exes.size=4);
-    local dirs:=split(dir,'_')[0]&['_high_density','_low_density','_ultra_density'];
-    cross(exes,dirs).map((e)->e[0]=>e[1]&'\'&e[0]).map((e)->log(e.join(" -> "),' ',copyFile@e ? 'o.k.' : fail));
-    exes.agg(::deleteFile);
-  end);
+EXPECTED_EXES:=['grav128.exe','grav256.exe','grav32.exe','grav64.exe'];
 
+rebuild(missingOnly:Boolean,prefix)->
+  allFiles('.','simplerPhysics.pas')
+  .filter((e)->e.extractFileDirectory not in ['.','\backup','/backup','backup'])
+  .filter((e)->e.matches(prefix))
+  .map((e)->e.expandedFileName.relativeFileName.extractFileDirectory)
+  .each(dir,
+    begin
+      local dirs:=split(dir,'_')[0]&['_high_density','_low_density','_ultra_density'];
+      local targets:=cross(EXPECTED_EXES,dirs).map((e)->e[0]=>e[1]&'\'&e[0]);
+      missingOnly AND targets.getInner(1).map(::fileExists).agg(AND)
+      ? void
+      : begin
+          log('Rebuilding ',dir);
+          copyFile(dir&'/simplerPhysics.pas','simplerPhysics.pas').assert;
+          exec('cmd',['/C','build.bat']);
+          assert(files('*.exe').sort==EXPECTED_EXES);
+          targets
+          .{missingOnly
+            ? $L.filter((t)->!fileExists(t[1]))
+            : $L}
+          .agg((e)->log(e.join(" -> "),' ',copyFile@e ? 'o.k.' : fail));
+          EXPECTED_EXES.agg(::deleteFile);
+        end;
+    end);
+
+main->rebuild(false,'.');
+main('missing')->rebuild(true,'.');
+main(prefix)->rebuild(false,'^./'&prefix);

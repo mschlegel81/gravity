@@ -1,0 +1,48 @@
+MY_IPC_ID:='CPU_MONITOR_DEMON';
+mutable cpuLoad:=[];
+
+getCpuLoadHistory->begin
+  local lastResult:=[100];
+  local lastQueried:=-100;
+save;
+  scriptTime<lastQueried+1
+  ? lastResult
+  : begin
+      isIpcServerRunning(MY_IPC_ID)
+      ? void
+      : begin
+          execAsync(mnhInfo['lightVersionPath'],['-quiet','-headless',myPath]);
+          sleep(1);
+        end;
+      lastResult:=sendIpcRequest(MY_IPC_ID,'get');
+      lastQueried:=scriptTime;
+      lastResult;
+    end;
+end;
+
+getCpuLoadHistory(maxSize:Int)->getCpuLoadHistory.trailing(maxSize);
+
+mutable lastQueried:=0;
+
+main->begin
+  startIpcServer(MY_IPC_ID,(request)->begin
+    request=='KILL'
+    ? begin
+        lastQueried:=scriptTime-600;
+        true;
+      end
+    : begin
+        lastQueried:=scriptTime;
+        cpuLoad;
+      end;
+  end);
+  local q:=round(scriptTime);
+  while(scriptTime<lastQueried+60,begin
+    sleepUntil(q+=1);
+    local l:=getCPULoadPercentage;
+    cpuLoad:=trailing(cpuLoad|l,256);
+    q mod 30=0 ? callMemoryCleaner : void;
+  end);
+end;
+
+main('kill')->isIpcServerRunning(MY_IPC_ID) ? sendIpcRequest(MY_IPC_ID,'KILL') : void;

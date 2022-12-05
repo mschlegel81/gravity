@@ -96,15 +96,21 @@ OPERATOR -(CONST x,y:T_2dVector):T_2dVector;
 VAR zeroSystem:T_value;
     sinus_table:array[0..SYS_SIZE-1] of TmyFloat;
     box:array[0..SYS_SIZE-1] of set of byte;
-PROCEDURE ensureAttractionFactors;
+PROCEDURE ensureAttractionFactors(CONST timeStepIndex:longint);
+  VAR radius,k0,k1,w0:double;
+      i_radius:longint;
   FUNCTION straightAttraction(CONST rx,ry:TmyFloat):T_2dVector;
     VAR f:double;
     begin
       f:=sqrt(sqr(rx)+sqr(ry));
-      if f<=20 then f:=3/f*(1/(f*f*f)-1/(20*20*20))
-              else f:=0;
-      result[0]:=rx*f;
-      result[1]:=ry*f;
+      if f<radius then begin
+	    f:=(cos(pi*k0*f/radius)*   w0
+		   +cos(pi*k1*f/radius)*(1-w0))/f*0.6;
+		if timeStepIndex<=2500 then f:=-f;
+        result[0]:=rx*f;
+        result[1]:=ry*f;
+      end else result:=zeroVec;
+
     end;
 
   FUNCTION calculateAttraction(CONST x,y:longint):T_2dVector;
@@ -131,17 +137,23 @@ PROCEDURE ensureAttractionFactors;
                                    y+GAUSS_LEGENDRE_WEIGHT[n,j].d)*
                                     (GAUSS_LEGENDRE_WEIGHT[n,i].w*
                                      GAUSS_LEGENDRE_WEIGHT[n,j].w);
-
-      if distance>SYS_SIZE*SYS_SIZE then result*=exp(-0.5*(distance*(1/SYS_SIZE*SYS_SIZE)-1));
     end;
 
   VAR ix,iy:longint;
       symX,symY:longint;
   begin
     if not(attractionInitialized) then begin
+
+      radius:=1+39/2*(1+cos(2*pi*timeStepIndex/5000));
+      i_radius:=round(radius);
+      if i_radius<radius then inc(i_radius);
+      k0:=trunc(radius*0.075)+0.5;
+      k1:=k0+1;
+      w0:=k1-0.5-radius*0.075;
+
       append(logHandle);
-	  writeln(logHandle,'Initializing gravity factors');
-	  close(logHandle);
+      writeln(logHandle,'Initializing gravity factors; radius=',radius:0:3,'; k=',k0:0:1);
+      close(logHandle);
       for ix:=-SYS_SIZE+1 to SYS_SIZE-1 do for iy:=-SYS_SIZE+1 to SYS_SIZE-1 do begin
         if (iy>0) then begin
           cachedAttraction[ix,iy]:=cachedAttraction[ix,-iy];
@@ -164,7 +176,7 @@ PROCEDURE ensureAttractionFactors;
       for ix:=0 to SYS_SIZE-1 do sinus_table[ix]:=sin(ix*2*pi/SYS_SIZE);
       for ix:=0 to SYS_SIZE-1 do begin
         box[ix]:=[];
-        for iy:=ix-20+SYS_SIZE to ix+20+SYS_SIZE do include(box[ix],byte(iy mod SYS_SIZE));
+        for iy:=ix-i_radius+SYS_SIZE*2 to ix+i_radius+SYS_SIZE*2 do include(box[ix],byte(iy mod SYS_SIZE));
       end;
       attractionInitialized:=true;
     end;
@@ -187,7 +199,6 @@ CONSTRUCTOR T_cellSystem.create;
       //mass:=0;
       p:=zeroVec;
     end;
-    //i:=SYS_SIZE div 2; value[i,i].mass:=100;
   end;
 
 DESTRUCTOR T_cellSystem.destroy;
@@ -219,8 +230,8 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
     end;
 
   PROCEDURE annihilate(CONST dtEff:TmyFloat);
-    CONST MASS_DIFFUSED=1E-4;
-          MASS_LOST    =4E-4;
+    CONST MASS_DIFFUSED=2E-3;
+          MASS_LOST    =2E-3;
           threshold    =5;
           dv:array[-1..1,-1..1] of T_2dVector=(((-7.071, -7.071),(-10,0),(-7.071, 7.071)),
                                                (( 0.0  ,-10    ),(  0,0),(     0,10    )),
@@ -238,7 +249,6 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
         with value[i,j] do begin
           v0  :=p*(1/mass);
           factor:=dtEff*(mass-threshold);
-          if mass>100 then factor*=100;
           massDiffusion:=mass*factor*MASS_DIFFUSED/GRID_SIZE;
           factor*=MASS_LOST;
 
@@ -256,6 +266,10 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
           mass+=m_;
           p   +=v_*m_;
         end;
+      end else with value[i,j] do begin
+        v_:=p*(1/(mass+1E-10));
+        mass+=dtEff*2E-3;
+        p:=v_*(mass+1E-10);
       end;
     end;
 
@@ -304,8 +318,9 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
       start:double;
 
   begin
-    ensureAttractionFactors();
     start:=now;
+    if (index mod 20)=0 then attractionInitialized:=false;
+    ensureAttractionFactors(index);
     result:=false;
     modifyVelocities;
 

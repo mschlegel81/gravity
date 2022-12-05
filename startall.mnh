@@ -1,3 +1,5 @@
+USE cpuMonitor;
+
 execute(execName:String,replay:Boolean)->
   execAsync(execName,[execName.matches('low_density') ? 'ld' :
                       execName.matches('high_density') ? 'hd' : void,
@@ -54,13 +56,6 @@ start(replay:Boolean)->begin
     firstQuestion:=false;
   end)});
 
-  local load:=[getCPULoadPercentage];
-  localAsync({while(true,begin
-    sleep(0.1);
-    local c:=getCPULoadPercentage;
-    load:=(load|c).trailing(32);
-  end)});
-
   local startedCount:=0;
   gravExes
   .exeSorting
@@ -68,8 +63,10 @@ start(replay:Boolean)->begin
                  execName in alreadyRunning ? tPrint('          ',execName.relativeFileName,' is already running')
                  : begin
                      userSignal:=userSignal==QUIT ? QUIT : '';
+                     local load:=getCpuLoadHistory(32);
                      while((load.size<16 OR max(load-[load.size-1..0])>=CPU_threshold) AND (userSignal==''),begin
                        tPrintD('Next:     ',execName.relativeFileName,"; CPU: ",BLOCKS[load].join,load.trailing,'%');
+                       load:=getCpuLoadHistory(32);
                        sleep(0.1);
                      end);
                      userSignal in [SKIP,QUIT]
@@ -80,7 +77,6 @@ start(replay:Boolean)->begin
                          : tPrint('Starting: ',execName.relativeFileName);
                          execute(execName,replay);
                          startedCount+=1;
-                         load|=min(101,load.trailing+(100 div mnhInfo['configured_cpus']));
                          while(execName not in (alreadyRunning:=runningGravTasks),sleep(0.1));
                        end;
                    end);
@@ -138,9 +134,7 @@ end};
 main('w')->begin
   local killSignal:=false;
   local linesTotal:=1;
-  local load:=[getCPULoadPercentage];
   local cpuWidth:=32;
-  localAsync({while(!killSignal,load:=trailing(load|(sleep(0.5) orElse getCPULoadPercentage),cpuWidth))});
 
   localAsync({begin local answer:=''; while(answer!=QUIT,begin
     answer:=ask('?',[QUIT,'+','-'],false);
@@ -194,7 +188,24 @@ main('w')->begin
     ? begin
         local out:=logs.map((l)->[l[0],l[2]==[] ? [''] : l[2]]);
         out.size==0 ? void : begin
-          local lines:=out.getInner(1).map(::size).agg(+);
+          local includeEta:=linesTotal>=3*out.size;
+
+
+          local lines:=out.getInner(1).map((L)->max(1+ord(includeEta),L.size)).agg(+);
+
+          local eta:=
+          includeEta
+          ? out.getInner(1).each(L,begin
+              local remainingDays:=1/(24*60*60)*
+              (4999-L.matchComposite('Step \d+ done'  ).getInner(0).trailing[0].orElse('0').clean(['0'..'9'    ],'').softCast)
+                  *(L.matchComposite('done: \d+.\d+s;').getInner(0).getInner(0)            .clean(['0'..'9','.'],'').softCast.{$L.agg(+)/$L.size});
+
+              remainingDays<1
+              ? format("eta %s",formatTime('hh:mm:ss',remainingDays))
+              : format("eta %s + %sdays",formatTime('hh:mm:ss',remainingDays-floor(remainingDays)),floor(remainingDays));
+            end)
+         : void;
+
           while(lines>max(linesTotal,out.size),begin
             local k:=argMax(out.getInner(1).map(::size));
             out[k]:=begin
@@ -202,19 +213,23 @@ main('w')->begin
                       [out[k,0],out[k,1].tail];
                     end;
           end);
+
+
+
           cpuWidth:=1+out.getInner(0)        .map(::length).max
                      +out.getInner(1).flatten.map(::length).max
                    -9;
-          out:=out.each(o,o[0]&o[1].head,o[1].tail,|);
+          includeEta
+          ? out:=out.each(o,o[0]&o[1].head,eta[index]&(o[1,1]),o[1].tail(2),|)
+          : out:=out.each(o,o[0]&o[1].head,o[1].tail,|);
         end;
         while(out.size<linesTotal,out|="\t...");
         clearPrint;
         printf('%s',out);
       end
     : void;
-    printDirect("\rCPU ",BLOCKS[load].join,load.trailing,'% ');
+    printDirect("\rCPU ",BLOCKS[getCpuLoadHistory(cpuWidth)].join,getCpuLoadHistory.orElse(['?']).trailing,'% ');
 
     anyChanged ? sleepTime:=0 : sleep(sleepTime:=1-(1-sleepTime)*0.9);
   end);
 end;
-

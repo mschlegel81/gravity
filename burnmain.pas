@@ -68,7 +68,7 @@ FUNCTION calcThread(p:pointer):ptrint;
       if not(sys.loadFromFile(fileName_dump)) then begin
         halt(1);
       end;
-      animStream:=TFileStream.create(fileName_anim,fmOpenReadWrite);
+      animStream:=TFileStream.create(fileName_anim,fmOpenReadWrite or fmShareDenyWrite);
       animStream.Seek(0,soBeginning);
       append(logHandle);
       repeat
@@ -80,7 +80,7 @@ FUNCTION calcThread(p:pointer):ptrint;
       until not(replaying) or closing;
       close(logHandle);
     end else begin
-      animStream:=TFileStream.create(fileName_anim,fmCreate);
+      animStream:=TFileStream.create(fileName_anim,fmCreate or fmShareDenyWrite);
       animStream.Seek(0,soBeginning);
       picture:=sys.getPicture(BurnForm.width,BurnForm.height);
       addPicture(true);
@@ -106,6 +106,7 @@ PROCEDURE TBurnForm.FormCreate(Sender: TObject);
     queue.create;
     beginThread(@calcThread,@queue);
     replaying:=false;
+    WindowState:=wsMinimized;
   end;
 
 PROCEDURE TBurnForm.FormClose(Sender: TObject; VAR CloseAction: TCloseAction);

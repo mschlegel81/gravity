@@ -1,5 +1,5 @@
-#!C:\bin\mnh_light.exe -quiet -convertPrintToLog -logDateFmt hh:mm:ss -logLocationLength 14 +log stdOut(2)
-USE startall;
+#!C:\bin\mnh_light.exe
+USE startall,cpuMonitor;
 
 datastore SEVEN_ZIP_PATH:=void;
 
@@ -15,7 +15,7 @@ ensure7zp:=SEVEN_ZIP_PATH.isVoid OR !fileExists(SEVEN_ZIP_PATH)
 mutable workAllowed:=true;
 
 @SuppressUnusedWarning
-cancelTask:=async({begin ask('',['Quit'],false); workAllowed:=false; end});
+cancelTask:=async({begin ask('',['Quit'],false); log('Quit message recieved'); workAllowed:=false; end});
 
 blocked->begin
   local scanInterval:=30;
@@ -32,39 +32,60 @@ save;
 end;
 
 mutable alreadyExamined:=[].toSet;
+mutable runningTasks:=0;
 
 compressSet(s)->workAllowed AND s not in alreadyExamined AND begin
   alreadyExamined|=s;
   local set:=files(['.anim','.exe','.dump'].map((e)->s.changeFileExt(e))).sort;
   local targetMnh:=s.changeFileExt('.mnh');
   local targetZip:=s.changeFileExt('.dat');
-  set.size==3                                               ? void : return note('Set ',s,' is incomplete') orElse false;
-  (!fileExists(targetZip) OR !fileExists(targetMnh))        ? void : return note('Set ',s,' is already compressed') orElse false;
-  (set[2].expandedFileName.relativeFileName not in blocked) ? void : return note('Set ',s,' is blocked') orElse false;
+  set.size==3                                               ? void : return log('Set ',s,' is incomplete') orElse false;
+  (!fileExists(targetZip) OR !fileExists(targetMnh))        ? void : return log('Set ',s,' is already compressed') orElse false;
+  (set[2].expandedFileName.relativeFileName not in blocked) ? void : return log('Set ',s,' is blocked') orElse false;
   deleteFile(targetZip);
- // log('Writing ',targetZip);
 
-  assert(exec(SEVEN_ZIP_PATH,['u','-mx5','-mmt2','-sfx',targetZip]|set)[1]==0,'Failed for set: ',s);
- // log('Writing ',targetMnh);
-  local linesToWrite:=[
-     'main("check")->fileInfo('+set[0].extractFileName.escape+')["size"]>'&fileInfo(set[0])['size']&' OR !fileExists(myPath.changeFileExt(".dat")) ? begin deleteFile(myPath.changeFileExt(".dat")); deleteFile(myPath); end : void;',
-     'main->'&set.each(n,format('fileExists(%s)',n.extractFileName.escape)).join(' AND ')&' ? main("check") : begin changeDirectory(myPath.extractFileDirectory); execPipeless(myPath.changeFileExt(".dat")); end;'];
-  writeFileLines(targetMnh,linesToWrite);
-  log('Done (set: ',s,')');
-  true;
+  begin
+    local logged:=false;
+    local sleepTime:=0.1;
+    while(getCpuLoadHistory.trailing>50 AND workAllowed,begin logged ? void : log('Waiting for low cpu load before writing ',targetZip); logged:=true; sleep(sleepTime:=30-(30-sleepTime)*0.99); end);
+  end;
+  workAllowed ? begin
+    log('Writing ',targetZip);
+    runningTasks+=1;
+    local execResult:=exec(SEVEN_ZIP_PATH,['u','-mx9','-mmt1','-sfx',targetZip]|set);
+    runningTasks-=1;
+    execResult[1]==0
+    ? void
+    : return warn('Failed for set: ',s,"\n",join(execResult[0],"\n"));
+
+    log('Writing ',targetMnh);
+    local linesToWrite:=[
+       'main("check")->fileInfo('+set[0].extractFileName.escape+')["size"]>'&fileInfo(set[0])['size']&' OR !fileExists(myPath.changeFileExt(".dat")) ? begin deleteFile(myPath.changeFileExt(".dat")); deleteFile(myPath); end : void;',
+       'main->'&set.each(n,format('fileExists(%s)',n.extractFileName.escape)).join(' AND ')&' ? main("check") : begin changeDirectory(myPath.extractFileDirectory); execPipeless(myPath.changeFileExt(".dat")); end;'];
+    writeFileLines(targetMnh,linesToWrite);
+    log('Done (set: ',s,') running: ',runningTasks);
+    true;
+  end : false;
 end;
 
 main(firstPattern,...)->begin
+  assertUniqueInstance;
   files(firstPattern|...)
     .flatten
     .map((f)->f.expandedFileName.changeFileExt(''))
     .unique
-    .each(f,compressSet(f));
+    .pEach(f,compressSet(f));
   log('Finished');
 end;
 
 main->begin
   assertUniqueInstance;
-  while(allFiles('.','*.log').filter((f)->f.fileStats[0]>=4999).map((f)->f.changeFileExt('')).unique.pEach(f,compressSet(f),OR));
+  while(allFiles('.','*.anim').fileInfo.map((f)->begin
+          //Filter by anim file...
+          local resolution:=f['path'].extractFileNameOnly.clean(['0'..'9'],'').softCast;
+          resolution in [32,64,128,256] AND f['size']=(sqr(resolution)*3+8)*5000
+          ? f['path'].changeFileExt('')
+          : void;
+        end).unique.pEach(f,compressSet(f),OR));
   log('Finished');
 end;

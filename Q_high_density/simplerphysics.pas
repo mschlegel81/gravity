@@ -96,15 +96,20 @@ OPERATOR -(CONST x,y:T_2dVector):T_2dVector;
 VAR zeroSystem:T_value;
     sinus_table:array[0..SYS_SIZE-1] of TmyFloat;
     box:array[0..SYS_SIZE-1] of set of byte;
-PROCEDURE ensureAttractionFactors;
+PROCEDURE ensureAttractionFactors(CONST timeStepIndex:longint);
+  VAR f0,f1:double;
+
   FUNCTION straightAttraction(CONST rx,ry:TmyFloat):T_2dVector;
     VAR f:double;
     begin
       f:=sqrt(sqr(rx)+sqr(ry));
-      if f<=20 then f:=3/f*(1/(f*f*f)-1/(20*20*20))
-              else f:=0;
-      result[0]:=rx*f;
-      result[1]:=ry*f;
+      if (f<20) then begin
+        if      f<f0 then f:=-1/f
+		else if f>f1 then f:= 1/f
+			         else f:=-cos((f-f0)*pi/(f1-f0))/f;
+	    result[0]:=rx*f;
+        result[1]:=ry*f;
+      end else result:=zeroVec;
     end;
 
   FUNCTION calculateAttraction(CONST x,y:longint):T_2dVector;
@@ -138,9 +143,12 @@ PROCEDURE ensureAttractionFactors;
   VAR ix,iy:longint;
       symX,symY:longint;
   begin
-    if not(attractionInitialized) then begin
+    if not(attractionInitialized) or (timeStepIndex mod 10=0) then begin
+	  f0:=40*abs(1-2*timeStepIndex/5000)-20; if f0<0 then f0:=0;
+	  f1:=40*abs(1-2*timeStepIndex/5000)   ; if f1>20 then f1:=20;
+
       append(logHandle);
-	  writeln(logHandle,'Initializing gravity factors');
+	  writeln(logHandle,'Initializing gravity factors; range=',f0:0:3,'..',f1:0:3);
 	  close(logHandle);
       for ix:=-SYS_SIZE+1 to SYS_SIZE-1 do for iy:=-SYS_SIZE+1 to SYS_SIZE-1 do begin
         if (iy>0) then begin
@@ -179,7 +187,7 @@ CONSTRUCTOR T_cellSystem.create;
     rewrite(logHandle);
     close(logHandle);
 
-    if      hasCmdLineParameter(PARAM_LOW_DENSITY)  then massFactor:= 0.1
+    if      hasCmdLineParameter(PARAM_LOW_DENSITY)  then massFactor:= 0
     else if hasCmdLineParameter(PARAM_HIGH_DENSITY) then massFactor:= 1
     else                                                 massFactor:=10;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
@@ -219,8 +227,8 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
     end;
 
   PROCEDURE annihilate(CONST dtEff:TmyFloat);
-    CONST MASS_DIFFUSED=1E-4;
-          MASS_LOST    =4E-4;
+    CONST MASS_DIFFUSED=1E-3;
+          MASS_LOST    =2E-3;
           threshold    =5;
           dv:array[-1..1,-1..1] of T_2dVector=(((-7.071, -7.071),(-10,0),(-7.071, 7.071)),
                                                (( 0.0  ,-10    ),(  0,0),(     0,10    )),
@@ -256,6 +264,10 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
           mass+=m_;
           p   +=v_*m_;
         end;
+      end else with value[i,j] do if mass<1 then begin
+        v0:=p*(1/(mass+1E-10));
+        mass+=1E-3*dtEff;
+        p:=v0*(mass+1E-10);
       end;
     end;
 
@@ -304,7 +316,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
       start:double;
 
   begin
-    ensureAttractionFactors();
+    ensureAttractionFactors(index);
     start:=now;
     result:=false;
     modifyVelocities;

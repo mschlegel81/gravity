@@ -1,8 +1,54 @@
+private allColors:=
+[0..127].map((i)->[0,0,i])|
+[126..0].map((i)->[127-i,0,i])|
+[128..255].map((i)->[i,0,0])|
+[0..255].map((i)->[255,i,0])|
+[0..255].map((i)->[255,255,i]);
+private colorMap:=allColors.each(c,c=>index).toMap;
+private realColors:=allColors*(1/255);
+private memoized colorIndex(Q:IntList(3))->colorMap[Q] orElse argMin(allColors.map((c)->euklideanNorm(c-Q)));
+
+private scaleTo(colors:List,width,targetWidth)->begin
+  local height      :=colors.size div width;
+  local targetHeight:=round(height*(targetWidth/width));
+//  local xMapping:=([0.. width-1]+0.5)*(targetWidth /width ); local newXValues:=0.5+[0..targetWidth -1];
+//  local yMapping:=([0..height-1]+0.5)*(targetHeight/height); local newYValues:=0.5+[0..targetHeight-1];
+//
+//  local colorIndexes:=colors
+//    .map(::colorIndex)
+//    .chunkMap(width)
+//    .map((row)->newBSpline([xMapping,row].transpose)(newXValues))
+//    .toList.transpose
+//    .map((column)->newBSpline([yMapping,column].transpose)(newYValues))
+//    .transpose.flatten.round;
+  local newXValues:=(0.5+[0..targetWidth -1])*width /targetWidth +0.5;
+  local newYValues:=(0.5+[0..targetHeight-1])*height/targetHeight+0.5;
+
+  local colorIndexes:=colors
+    .map(::colorIndex)
+    .chunkMap(width)
+    .map((row)->newLocalInterpolator(row)(newXValues))
+    .toList.transpose
+    .map((column)->newLocalInterpolator(column)(newYValues))
+    .transpose.flatten.round;
+
+  colorIndexes:=colorIndexes * ord(0<=colorIndexes< allColors.size)
+                             + ord(   colorIndexes>=allColors.size)*(allColors.size-1);
+  realColors[colorIndexes];
+end;
+
+
 mutable workAllowed:=true;
+ensureCancelTask->begin
+  local taskWasStartedBefore:=false;
+save;
+  taskWasStartedBefore
+  ? void
+  : async({begin ask('You can cancel this operation',['Quit']); workAllowed:=false; end});
+  taskWasStartedBefore:=true;
+end;
 
-memoized ensureCancelTask->async({begin ask('You can cancel this operation',['Quit'],false); workAllowed:=false; end});
-
-replay(filename,export:Boolean)->fileExists(filename) AND workAllowed ? begin
+replay(filename,scaledUp,export:Boolean)->fileExists(filename) AND workAllowed ? begin
   ensureCancelTask;
   print('Reading ',filename);
   local bytesRead:=0;
@@ -12,34 +58,27 @@ replay(filename,export:Boolean)->fileExists(filename) AND workAllowed ? begin
   local lastOutputTime:=scriptTime;
 
   local doLog:=(suffix)->begin
-    print('Reading @',round((frames   -lastFrames   )/(scriptTime-lastOutputTime)),'fps / ',
+    print('Reading @',round((frames   -lastFrames   )/(scriptTime-lastOutputTime),2),'fps / ',
                       round((bytesRead-lastBytesRead)/(scriptTime-lastOutputTime)/1024),'kbps; (',frames,'frames /',round(bytesRead/1024²),'MiB)',suffix);
   end;
 
   local index:=-1;
   local res:=filename.extractFileNameOnly.clean(['0'..'9'],'').softCast;
   assert(res in [32,64,128,256]);
+  local hiRes:=res*4;
   local chunkSize:=res*res*3;
 
-
-  (filename.extractFileExt.lower='.txt'
-  ? fileLineIterator(filename)
-    .map((line)->[filename.changeFileExt(format('_%4.4d.png',index+=1)),begin bytesRead+=line.byteLength; line; end])
-    .map((D)->export AND fileExists(D[0])
-              ? void
-              : begin
-                  local data:=try(::interpret,[D[1]]);
-                  data.isVoid ? void : [D[0],[data[1]*(1/255),data[0]]];
-                end)
-  : byteStreamIterator(filename,chunkSize+8)
+  byteStreamIterator(filename,chunkSize+8,export ? void : 60)
     .map((line)->[filename.changeFileExt(format('_%4.4d.png',index+=1)),begin bytesRead+=line.size; line; end])
-    .map((D)->export AND fileExists(D[0])
-              ? void
-              : [D[0],[chunkMap(D[1].head(chunkSize)*(1/255),3).toList,res]]))
+    .filter((D)->!(export AND fileExists(D[0])))
+    .{scaledUp
+      ? $filtered.map((D)->[D[0],[chunkMap(D[1].head(chunkSize)        ,3).toList.scaleTo(res,hiRes),hiRes]])
+      : $filtered.map((D)->[D[0],[chunkMap(D[1].head(chunkSize)*(1/255),3).toList                   ,res  ]])}
   .agg((d)->begin      //agg	@[MNH]:3,1	1	43059.349ms	4564.750ms
-    workAllowed
-    ? plotRasterImage@(d[1])
-    : halt;
+    setOptions(["axisStyleX"=>0,"axisStyleY"=>0].toMap);
+    plot();
+    plotRasterImage@(d[1]);
+    frames+=1;
     export
     ? begin
         doLog(' '&d[0]);
@@ -50,7 +89,9 @@ replay(filename,export:Boolean)->fileExists(filename) AND workAllowed ? begin
         addAnimationFrame;
         postDisplay;
       end;
-    frames+=1;
+    workAllowed
+    ? void
+    : halt;
   end);
   callMemoryCleaner;
   doLog(' - EOF');
@@ -69,7 +110,7 @@ memoized replayableFiles->
 //*Replay with an ask dialog
 main->begin
   assertGuiStarted;
-  ask('Which file to replay?',replayableFiles.getInner(0)).replay(false);
+  ask('Which file to replay?',replayableFiles.getInner(0)).replay(true,false);
 end;
 
 USE formattingUtils;
@@ -94,11 +135,18 @@ main('png',...)->
    ? replayableFiles.map((f)->f[1]=5000 ? f[0] : void)
    : files(...))
   .filter((f)->f.extractFileExt.lower=='.anim')
-  .each(f,try(::replay,[f,true],::warn));
+  .each(f,replay(f,false,true));
+
+main('hiResPng',...)->
+  (size(...)=0
+   ? replayableFiles.map((f)->f[1]=5000 ? f[0] : void)
+   : files(...))
+  .filter((f)->f.extractFileExt.lower=='.anim')
+  .each(f,replay(f,true,true));
 
 //*Replay a specific file
 main(filename)->begin
   assertGuiStarted;
-  replay(filename,false);
+  replay(filename,false,false);
 end;
 

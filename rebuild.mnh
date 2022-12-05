@@ -14,13 +14,15 @@ rebuild(missingOnly:Boolean,prefix)->
       : begin
           log('Rebuilding ',dir);
           copyFile(dir&'/simplerPhysics.pas','simplerPhysics.pas').assert;
-          exec('cmd',['/C','build.bat']);
-          assert(files('*.exe').sort==EXPECTED_EXES);
-          targets
-          .{missingOnly
-            ? $L.filter((t)->!fileExists(t[1]))
-            : $L}
-          .agg((e)->log(e.join(" -> "),' ',copyFile@e ? 'o.k.' : fail));
+          local buildOutput:=exec('cmd',['/C','build.bat']);
+
+          files('*.exe').sort==EXPECTED_EXES
+          ? targets
+            .{missingOnly
+              ? $L.filter((t)->!fileExists(t[1]))
+              : $L}
+            .agg((e)->log(e.join(" -> "),' ',copyFile@e ? 'o.k.' : fail))
+          : fail(buildOutput[0].join("\n"));
           EXPECTED_EXES.agg(::deleteFile);
         end;
     end);

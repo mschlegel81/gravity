@@ -4,16 +4,11 @@ main->begin
   local blocked:=runningGravTasks.map((n)->n.changeFileExt('')).relativeFileName.toSet;
   local unblockedFilter:=(f)->f.changeFileExt('').expandedFileName.relativeFileName not in blocked;
 
-  local recreatable:=intersect(
-                     allFiles('.','*.anim').map((s)->s.changeFileExt('')),
-                     allFiles('.','*.dump').map((s)->s.changeFileExt('')),
-                     allFiles('.','*.exe' ).map((s)->s.changeFileExt('')));
-  local existing   :=allFiles('.','*.txt').union(allFiles('.','*.log'));
+  local existing   :=allFiles('.','grav*.txt').union(allFiles('.','grav*.log'));
   local freedBytes:=0;
   local freedCount:=0;
   existing
   .sort
-  .filter((f)->f.changeFileExt('') in recreatable)
   .filter(unblockedFilter)
   .map((f)->[f,f.fileInfo['size']])
   .agg((f)->log('Deleting ',f[0],deleteFile(f[0]) ? begin freedCount+=1; freedBytes+=f[1]; ' o.k.'; end : ' FAILED'));
@@ -29,6 +24,7 @@ main->begin
                   exec(executor,[f,'check']));
   changeDirectory(root);
 
+  local
   recreatable:=intersect(allFiles('.','*.mnh').map((s)->s.changeFileExt('')),
                          allFiles('.','*.dat').map((s)->s.changeFileExt('')));
   existing

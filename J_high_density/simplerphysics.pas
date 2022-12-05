@@ -96,13 +96,15 @@ OPERATOR -(CONST x,y:T_2dVector):T_2dVector;
 VAR zeroSystem:T_value;
     sinus_table:array[0..SYS_SIZE-1] of TmyFloat;
     box:array[0..SYS_SIZE-1] of set of byte;
-PROCEDURE ensureAttractionFactors;
+PROCEDURE ensureAttractionFactors(CONST timeStepIndex:longint);
+  VAR radius  :double;
+      i_radius:longint;
   FUNCTION straightAttraction(CONST rx,ry:TmyFloat):T_2dVector;
     VAR f:double;
     begin
       f:=sqrt(sqr(rx)+sqr(ry));
-      if f<=20 then f:=3/f*(1/(f*f*f)-1/(20*20*20))
-              else f:=0;
+      if f<radius then f:=0.5/f*cos(sqr(f/radius)*1.5*pi)
+                  else f:=0;
       result[0]:=rx*f;
       result[1]:=ry*f;
     end;
@@ -131,17 +133,37 @@ PROCEDURE ensureAttractionFactors;
                                    y+GAUSS_LEGENDRE_WEIGHT[n,j].d)*
                                     (GAUSS_LEGENDRE_WEIGHT[n,i].w*
                                      GAUSS_LEGENDRE_WEIGHT[n,j].w);
-
-      if distance>SYS_SIZE*SYS_SIZE then result*=exp(-0.5*(distance*(1/SYS_SIZE*SYS_SIZE)-1));
     end;
 
   VAR ix,iy:longint;
       symX,symY:longint;
   begin
     if not(attractionInitialized) then begin
+
+       //r(t:Int)->begin
+       //  local i:=t mod 2500;
+       //  local rad:=(i<1250)
+       //             ? exp(ln(2)*(   i      *5/1250))
+       //             : exp(ln(2)*(5-(i-1250)*5/1250));
+       //  t>2500 ? begin
+       //    i:=1; while(i<rad,i*=2); i;
+       //  end : rad;
+       //end;
+	   ix:=timeStepIndex mod 2500;
+	   if ix<1250
+	   then radius:=exp(ln(2)*(   ix      *5/1250))
+	   else radius:=exp(ln(2)*(5-(ix-1250)*5/1250));
+	   if timeStepIndex>=2500 then begin
+	     i_radius:=1;
+		 while i_radius<radius do i_radius*=2;
+		 radius:=i_radius;
+	   end else begin
+	     i_radius:=round(radius); if i_radius<radius then inc(i_radius);
+	   end;
+
       append(logHandle);
-	  writeln(logHandle,'Initializing gravity factors');
-	  close(logHandle);
+      writeln(logHandle,'Initializing gravity factors; radius=',radius:0:3);
+      close(logHandle);
       for ix:=-SYS_SIZE+1 to SYS_SIZE-1 do for iy:=-SYS_SIZE+1 to SYS_SIZE-1 do begin
         if (iy>0) then begin
           cachedAttraction[ix,iy]:=cachedAttraction[ix,-iy];
@@ -164,7 +186,7 @@ PROCEDURE ensureAttractionFactors;
       for ix:=0 to SYS_SIZE-1 do sinus_table[ix]:=sin(ix*2*pi/SYS_SIZE);
       for ix:=0 to SYS_SIZE-1 do begin
         box[ix]:=[];
-        for iy:=ix-20+SYS_SIZE to ix+20+SYS_SIZE do include(box[ix],byte(iy mod SYS_SIZE));
+        for iy:=ix-i_radius+SYS_SIZE*2 to ix+i_radius+SYS_SIZE*2 do include(box[ix],byte(iy mod SYS_SIZE));
       end;
       attractionInitialized:=true;
     end;
@@ -183,11 +205,10 @@ CONSTRUCTOR T_cellSystem.create;
     else if hasCmdLineParameter(PARAM_HIGH_DENSITY) then massFactor:= 1
     else                                                 massFactor:=10;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
-      mass:=massFactor+0.001*random;
+      mass:=massFactor*random;
       //mass:=0;
       p:=zeroVec;
     end;
-    //i:=SYS_SIZE div 2; value[i,i].mass:=100;
   end;
 
 DESTRUCTOR T_cellSystem.destroy;
@@ -219,8 +240,8 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
     end;
 
   PROCEDURE annihilate(CONST dtEff:TmyFloat);
-    CONST MASS_DIFFUSED=1E-4;
-          MASS_LOST    =4E-4;
+    CONST MASS_DIFFUSED=2E-3;
+          MASS_LOST    =2E-3;
           threshold    =5;
           dv:array[-1..1,-1..1] of T_2dVector=(((-7.071, -7.071),(-10,0),(-7.071, 7.071)),
                                                (( 0.0  ,-10    ),(  0,0),(     0,10    )),
@@ -246,6 +267,8 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
           p   *=(1-factor);
           factor:=mass*0.2;
           if massDiffusion>factor then massDiffusion:=factor;
+          factor:=mass*2*GRID_SIZE;
+          if mass>100 then factor*=10;
         end;
 
         //Blowout:
@@ -256,6 +279,10 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
           mass+=m_;
           p   +=v_*m_;
         end;
+      end else with value[i,j] do begin
+        v_:=p*(1/(mass+1E-10));
+        mass+=dtEff*2E-3;
+        p:=v_*(mass+1E-10);
       end;
     end;
 
@@ -304,8 +331,11 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
       start:double;
 
   begin
-    ensureAttractionFactors();
     start:=now;
+    if (index<=2500) and (index mod 10=0) or
+  	   (index=2501) or (index=2751) or (index=3001) or (index=3251) or (index=3501) or (index=4000) or (index=4250) or (index=4500) or (index=4750) or (index=5000)
+	then attractionInitialized:=false;
+    ensureAttractionFactors(index);
     result:=false;
     modifyVelocities;
 

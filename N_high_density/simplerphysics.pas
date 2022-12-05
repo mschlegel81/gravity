@@ -96,13 +96,16 @@ OPERATOR -(CONST x,y:T_2dVector):T_2dVector;
 VAR zeroSystem:T_value;
     sinus_table:array[0..SYS_SIZE-1] of TmyFloat;
     box:array[0..SYS_SIZE-1] of set of byte;
-PROCEDURE ensureAttractionFactors;
+	initForGamma:double=500;
+PROCEDURE ensureAttractionFactors(CONST timeStepIndex:longint);
+  VAR gamma:double;
+      forceFactor:double;
   FUNCTION straightAttraction(CONST rx,ry:TmyFloat):T_2dVector;
     VAR f:double;
     begin
-      f:=sqrt(sqr(rx)+sqr(ry));
-      if f<=20 then f:=3/f*(1/(f*f*f)-1/(20*20*20))
-              else f:=0;
+      f:=(sqr(rx)+sqr(ry));
+	  if (f>1E-3) and (f<400) then f:=exp(ln(f)*gamma)*forceFactor
+                              else f:=0;
       result[0]:=rx*f;
       result[1]:=ry*f;
     end;
@@ -138,10 +141,15 @@ PROCEDURE ensureAttractionFactors;
   VAR ix,iy:longint;
       symX,symY:longint;
   begin
-    if not(attractionInitialized) then begin
+    gamma:=-2+2*cos(exp((5000-timeStepIndex)*1E-3));
+    if not(attractionInitialized) or (abs(gamma-initForGamma)>1E-2) then begin
+	  initForGamma:=gamma;
+	  forceFactor:=0;
+	  for ix:=1 to 20 do forceFactor+=ix*exp(ln(ix)*gamma); forceFactor:=1/forceFactor;
       append(logHandle);
-	  writeln(logHandle,'Initializing gravity factors');
+	  writeln(logHandle,'Initializing gravity factors; gamma=',1+gamma:0:3,'; factor=',forceFactor:0:3);
 	  close(logHandle);
+	  gamma*=0.5;
       for ix:=-SYS_SIZE+1 to SYS_SIZE-1 do for iy:=-SYS_SIZE+1 to SYS_SIZE-1 do begin
         if (iy>0) then begin
           cachedAttraction[ix,iy]:=cachedAttraction[ix,-iy];
@@ -219,8 +227,8 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
     end;
 
   PROCEDURE annihilate(CONST dtEff:TmyFloat);
-    CONST MASS_DIFFUSED=1E-4;
-          MASS_LOST    =4E-4;
+    CONST MASS_DIFFUSED=1E-3;
+          MASS_LOST    =1E-3;
           threshold    =5;
           dv:array[-1..1,-1..1] of T_2dVector=(((-7.071, -7.071),(-10,0),(-7.071, 7.071)),
                                                (( 0.0  ,-10    ),(  0,0),(     0,10    )),
@@ -238,13 +246,12 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
         with value[i,j] do begin
           v0  :=p*(1/mass);
           factor:=dtEff*(mass-threshold);
-          if mass>100 then factor*=100;
           massDiffusion:=mass*factor*MASS_DIFFUSED/GRID_SIZE;
           factor*=MASS_LOST;
 
           mass*=(1-factor);
           p   *=(1-factor);
-          factor:=mass*0.2;
+          factor:=mass*0.5;
           if massDiffusion>factor then massDiffusion:=factor;
         end;
 
@@ -256,6 +263,10 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
           mass+=m_;
           p   +=v_*m_;
         end;
+      end else with value[i,j] do if mass<1 then begin
+        v0:=p*(1/(mass+1E-10));
+        mass+=5E-3*dtEff;
+        p:=v0*(mass+1E-10);
       end;
     end;
 
@@ -304,7 +315,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
       start:double;
 
   begin
-    ensureAttractionFactors();
+    ensureAttractionFactors(index);
     start:=now;
     result:=false;
     modifyVelocities;

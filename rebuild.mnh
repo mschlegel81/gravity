@@ -1,32 +1,45 @@
-EXPECTED_EXES:=['grav128.exe','grav256.exe','grav32.exe','grav64.exe'];
+LAZ_BUILD:='..\lazarus64\lazbuild.exe';
+LPI:='gravity.lpi';
+MODES:=['--bm=opt32' =>'grav032.exe',
+        '--bm=opt64' =>'grav064.exe',
+        '--bm=opt128'=>'grav128.exe',
+        '--bm=opt256'=>'grav256.exe'];
+
+execBuild(customizationFile:String,mode:StringList(2),missingOnly:Boolean)->begin
+  local targets:=split(customizationFile.extractFileDirectory,'_')[0]&['_high_density/','_low_density/','_ultra_density/']&mode[1];
+  missingOnly
+  ? targets:=targets.filter((f)->!fileExists(f))
+  : void;
+  targets.size==0 ? return void :
+
+  print('Building ',customizationFile,' with mode ',mode[0]);
+  copyFile(customizationFile,'customization.pas').assert;
+  local buildOut:=exec(LAZ_BUILD,[LPI,mode[0]]);
+  buildOut[1]==0
+  ? void
+  : fail('Build failed for mode ',mode[0]," with:\n",buildOut[0].join("\n"));
+
+  future((src,tgt)->begin
+    tgt.each(t,
+      printf('%s -> %s',src,t),
+      copyFile(src,t).assert('Copy failed for: ',src,' -> ',t));
+    deleteFile(src);
+  end,[mode[1],targets]);
+end;
 
 rebuild(missingOnly:Boolean,prefix)->
-  allFiles('.','simplerPhysics.pas')
-  .filter((e)->e.extractFileDirectory not in ['.','\backup','/backup','backup'])
+  allFiles('.','customization.pas')
+  .filter((e)->e.extractFileDirectory not in ['.','.\backup','./backup'])
   .filter((e)->e.matches(prefix))
-  .map((e)->e.expandedFileName.relativeFileName.extractFileDirectory)
-  .each(dir,
-    begin
-      local dirs:=split(dir,'_')[0]&['_high_density','_low_density','_ultra_density'];
-      local targets:=cross(EXPECTED_EXES,dirs).map((e)->e[0]=>e[1]&'\'&e[0]);
-      missingOnly AND targets.getInner(1).map(::fileExists).agg(AND)
-      ? void
-      : begin
-          log('Rebuilding ',dir);
-          copyFile(dir&'/simplerPhysics.pas','simplerPhysics.pas').assert;
-          local buildOutput:=exec('cmd',['/C','build.bat']);
+  .each(customizationFile,MODES.each(mode,execBuild(customizationFile,mode,missingOnly)),|)
+  .each(copyFuture,copyFuture());
 
-          files('*.exe').sort==EXPECTED_EXES
-          ? targets
-            .{missingOnly
-              ? $L.filter((t)->!fileExists(t[1]))
-              : $L}
-            .agg((e)->log(e.join(" -> "),' ',copyFile@e ? 'o.k.' : fail))
-          : fail(buildOutput[0].join("\n"));
-          EXPECTED_EXES.agg(::deleteFile);
-        end;
-    end);
-
+//*(Re)build all
 main->rebuild(false,'.');
+//*Build missing
 main('missing')->rebuild(true,'.');
+//*Build all matching a given prefix (regex)
 main(prefix)->rebuild(false,'^./'&prefix);
+
+@after
+after->print('Rebuild done');

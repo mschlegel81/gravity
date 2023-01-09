@@ -1,41 +1,33 @@
-private allColors:=
-[0..127].map((i)->[0,0,i])|
-[126..0].map((i)->[127-i,0,i])|
-[128..255].map((i)->[i,0,0])|
-[0..255].map((i)->[255,i,0])|
-[0..255].map((i)->[255,255,i]);
-private colorMap:=allColors.each(c,c=>index).toMap;
-private realColors:=allColors*(1/255);
-private memoized colorIndex(Q:IntList(3))->colorMap[Q] orElse argMin(allColors.map((c)->euklideanNorm(c-Q)));
+USE colorTable;
 
-private scaleTo(colors:List,width,targetWidth)->begin
-  local height      :=colors.size div width;
-  local targetHeight:=round(height*(targetWidth/width));
-//  local xMapping:=([0.. width-1]+0.5)*(targetWidth /width ); local newXValues:=0.5+[0..targetWidth -1];
-//  local yMapping:=([0..height-1]+0.5)*(targetHeight/height); local newYValues:=0.5+[0..targetHeight-1];
+//private scaleTo(colors:List,width,targetWidth)->begin
+//  local height      :=colors.size div width;
+//  local targetHeight:=round(height*(targetWidth/width));
+////  local xMapping:=([0.. width-1]+0.5)*(targetWidth /width ); local newXValues:=0.5+[0..targetWidth -1];
+////  local yMapping:=([0..height-1]+0.5)*(targetHeight/height); local newYValues:=0.5+[0..targetHeight-1];
+////
+////  local colorIndexes:=colors
+////    .map(::colorIndex)
+////    .chunkMap(width)
+////    .map((row)->newBSpline([xMapping,row].transpose)(newXValues))
+////    .toList.transpose
+////    .map((column)->newBSpline([yMapping,column].transpose)(newYValues))
+////    .transpose.flatten.round;
+//  local newXValues:=(0.5+[0..targetWidth -1])*width /targetWidth +0.5;
+//  local newYValues:=(0.5+[0..targetHeight-1])*height/targetHeight+0.5;
 //
 //  local colorIndexes:=colors
 //    .map(::colorIndex)
 //    .chunkMap(width)
-//    .map((row)->newBSpline([xMapping,row].transpose)(newXValues))
+//    .map((row)->newLocalInterpolator(row)(newXValues))
 //    .toList.transpose
-//    .map((column)->newBSpline([yMapping,column].transpose)(newYValues))
+//    .map((column)->newLocalInterpolator(column)(newYValues))
 //    .transpose.flatten.round;
-  local newXValues:=(0.5+[0..targetWidth -1])*width /targetWidth +0.5;
-  local newYValues:=(0.5+[0..targetHeight-1])*height/targetHeight+0.5;
-
-  local colorIndexes:=colors
-    .map(::colorIndex)
-    .chunkMap(width)
-    .map((row)->newLocalInterpolator(row)(newXValues))
-    .toList.transpose
-    .map((column)->newLocalInterpolator(column)(newYValues))
-    .transpose.flatten.round;
-
-  colorIndexes:=colorIndexes * ord(0<=colorIndexes< allColors.size)
-                             + ord(   colorIndexes>=allColors.size)*(allColors.size-1);
-  realColors[colorIndexes];
-end;
+//
+//  colorIndexes:=colorIndexes * ord(0<=colorIndexes< allColors.size)
+//                             + ord(   colorIndexes>=allColors.size)*(allColors.size-1);
+//  realColors[colorIndexes];
+//end;
 
 
 mutable workAllowed:=true;
@@ -47,6 +39,8 @@ save;
   : async({begin ask('You can cancel this operation',['Quit']); workAllowed:=false; end});
   taskWasStartedBefore:=true;
 end;
+
+RealColors:=colorTable*(1/255);
 
 replay(filename,scaledUp,export:Boolean)->fileExists(filename) AND workAllowed ? begin
   ensureCancelTask;
@@ -65,15 +59,19 @@ replay(filename,scaledUp,export:Boolean)->fileExists(filename) AND workAllowed ?
   local index:=-1;
   local res:=filename.extractFileNameOnly.clean(['0'..'9'],'').softCast;
   assert(res in [32,64,128,256]);
-  local hiRes:=res*4;
-  local chunkSize:=res*res*3;
+//  local hiRes:=res*4;
+  local chunkSize:=res*res*2;
 
   byteStreamIterator(filename,chunkSize+8,export ? void : 60)
     .map((line)->[filename.changeFileExt(format('_%4.4d.png',index+=1)),begin bytesRead+=line.size; line; end])
     .filter((D)->!(export AND fileExists(D[0])))
-    .{scaledUp
-      ? $filtered.map((D)->[D[0],[chunkMap(D[1].head(chunkSize)        ,3).toList.scaleTo(res,hiRes),hiRes]])
-      : $filtered.map((D)->[D[0],[chunkMap(D[1].head(chunkSize)*(1/255),3).toList                   ,res  ]])}
+    //.{scaledUp
+    //  ? $filtered.map((D)->[D[0],[chunkMap(D[1].head(chunkSize)        ,3).toList.scaleTo(res,hiRes),hiRes]])
+    //  : $filtered.map((D)->[D[0],[chunkMap(D[1].head(chunkSize)*(1/255),3).toList                   ,res  ]])}
+    .map((D)->[D[0],note(chunkMap(D[1].head(chunkSize),2,(Bytes)->Bytes[0]+Bytes[1]*256).toList),
+
+
+    [RealColors.getAll(chunkMap(D[1].head(chunkSize),2,(Bytes)->Bytes[0]+Bytes[1]*256).toList),res  ]])
   .agg((d)->begin      //agg	@[MNH]:3,1	1	43059.349ms	4564.750ms
     setOptions(["axisStyleX"=>0,"axisStyleY"=>0].toMap);
     plot();
@@ -100,9 +98,12 @@ end : void;
 memoized replayableFiles->
   allFiles('.','grav*.anim').map((l)->begin
     local res:=l.extractFileNameOnly.clean(['0'..'9'],'').softCast;
-    assert(res in [32,64,128,256]);
-    local chunkSize:=res*res*3+8;
-    [l,fileInfo(l)['size'] div chunkSize];
+    res in [32,64,128,256]
+    ? begin
+        local chunkSize:=res*res*2+8;
+        [l,fileInfo(l)['size'] div chunkSize];
+      end
+    : void;
   end)
   .sort
   .map((k)->[k[0].expandedFileName.relativeFileName,k[1]]);

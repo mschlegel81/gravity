@@ -1,6 +1,11 @@
 USE startall;
 
+
 main->begin
+  deleteDir('backup');
+  deleteDir('lib');
+  files(['*.anim','*.log','*.exe','*.dump']).map(::deleteFile);
+
   local blocked:=runningGravTasks.map((n)->n.changeFileExt('')).relativeFileName.toSet;
   local unblockedFilter:=(f)->f.changeFileExt('').expandedFileName.relativeFileName not in blocked;
 

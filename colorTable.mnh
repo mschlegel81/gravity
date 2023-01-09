@@ -1,0 +1,15 @@
+private validByte(s:Numeric)->s<0 ? 0 : s>1 ? 255 : floor(s*255);
+private colorOf(k:Numeric)->begin
+  k<0.5 ? [0,0,validByte(k)] :
+  k<1.5 ? [validByte(k-0.5),0,validByte(1-k  )] :
+          [validByte(k-0.5),validByte(k-1.5),validByte(k-2.5)];
+end;
+
+memoized colorTable->map([0..1023]/1023*3.5,(k)->colorOf(k));
+
+main->begin
+  local tab:=colorTable;
+  printf('CONST COLOR_TABLE: array[0..%s] of T_rgbColor=(',tab.size-1);
+  tab.chunkMap(16).map((l)->join("(\v%s\v,\v%s\v,\v%s\v)".format@transpose(l),"\v,\v")).toList.join(",\n").&(');').print;
+end;
+

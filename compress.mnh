@@ -83,7 +83,7 @@ main->begin
   while(allFiles('.','*.anim').fileInfo.map((f)->begin
           //Filter by anim file...
           local resolution:=f['path'].extractFileNameOnly.clean(['0'..'9'],'').softCast;
-          resolution in [32,64,128,256] AND f['size']=(sqr(resolution)*3+8)*5000
+          resolution in [32,64,128,256] AND f['size']=(sqr(resolution)*2+8)*5000
           ? f['path'].changeFileExt('')
           : void;
         end).unique.pEach(f,compressSet(f),OR));

@@ -3,123 +3,31 @@ UNIT simplerPhysics;
 {$mode objfpc}{$H+}
 
 INTERFACE
-USES basicGraphics,serializationUtil;
-
-CONST
-  SYMMETRIC_CONTINUATION=1;
-  dt             =0.05;
-  GRID_SIZE      =1;
-  MAX_ACCELERATION_RANGE=GRID_SIZE*0.5;
-
-  PARAM_RESTART='restart';
-  PARAM_REPLAY='replay';
-  PARAM_CLOSE='close';
-  PARAM_LOW_DENSITY='ld';
-  PARAM_HIGH_DENSITY='hd';
-
+USES basicGraphics,serializationUtil,vectors,commandLineHandling;
 TYPE
-  TmyFloat=double;
-
-  T_2dVector=array[0..1] of TmyFloat;
-  T_value=array[0..SYS_SIZE-1,0..SYS_SIZE-1] of record mass:TmyFloat; p:T_2dVector; end;
-
-  { T_cellSystem }
-
   T_cellSystem=object(T_serializable)
     private
-      nextValue,
-      value:T_value;
+      value:T_systemState;
     public
       CONSTRUCTOR create;
       DESTRUCTOR destroy;
 
-      FUNCTION doMacroTimeStep(CONST index:longint):boolean;
-      FUNCTION getPicture(CONST displayWidth,displayHeight:longint):P_rgbPicture;
+      FUNCTION doMacroTimeStep(CONST timeStepIndex:longint):boolean;
+      FUNCTION getPicture:P_rgbPicture;
       FUNCTION getSerialVersion:dword; virtual;
       FUNCTION loadFromStream(VAR stream:T_bufferedInputStreamWrapper):boolean; virtual;
       PROCEDURE saveToStream(VAR stream:T_bufferedOutputStreamWrapper); virtual;
   end;
 
-CONST
-  zeroVec:T_2dVector=(0,0);
-
-FUNCTION fileName_anim:string;
-FUNCTION fileName_dump:string;
-FUNCTION filename_txt:string;
-FUNCTION hasCmdLineParameter(CONST s:string):boolean;
-VAR logHandle:textFile;
 IMPLEMENTATION
-USES sysutils;
+USES sysutils,customization,math;
+CONST epsilon=1E-10;
 VAR cachedAttraction:array [-SYS_SIZE+1..SYS_SIZE-1,-SYS_SIZE+1..SYS_SIZE-1] of T_2dVector;
     attractionInitialized:boolean=false;
-
-FUNCTION hasCmdLineParameter(CONST s:string):boolean;
-  VAR i:longint;
-  begin
-    for i:=1 to paramCount do if paramStr(i)=s then exit(true);
-    result:=false;
-  end;
-
-FUNCTION fileName_anim:string;
-  begin
-    result:=ChangeFileExt(paramStr(0),'.anim');
-  end;
-
-FUNCTION fileName_dump:string;
-  begin
-    result:=ChangeFileExt(paramStr(0),'.dump');
-  end;
-
-FUNCTION filename_txt:string;
-  begin
-    result:=ChangeFileExt(paramStr(0),'.txt');
-  end;
-
-OPERATOR *(CONST x:T_2dVector; CONST y:TmyFloat):T_2dVector;
-  begin
-    result[0]:=x[0]*y;
-    result[1]:=x[1]*y;
-  end;
-
-OPERATOR +(CONST x,y:T_2dVector):T_2dVector;
-  begin
-    result[0]:=x[0]+y[0];
-    result[1]:=x[1]+y[1];
-  end;
-
-OPERATOR -(CONST x,y:T_2dVector):T_2dVector;
-  begin
-    result[0]:=x[0]-y[0];
-    result[1]:=x[1]-y[1];
-  end;
-
-VAR zeroSystem:T_value;
     sinus_table:array[0..SYS_SIZE-1] of TmyFloat;
     box:array[0..SYS_SIZE-1] of set of byte;
-	initialzedForAngle:double=0;
+
 PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
-  VAR angle:double=0;
-      cang:double=1;
-	  sang:double=0;
-
-  FUNCTION straightAttraction(CONST rx,ry:TmyFloat):T_2dVector;
-    VAR f,dx,dy:double;
-	    q:double=0;
-    begin
-	  dx:=rx*cang+ry*sang;
-	  dy:=ry*cang-rx*sang;
-      f:=sqrt(sqr(rx)+sqr(ry));
-      if (f<20) then begin
-	    if f>abs(dx) then
-		q:=f-abs(dx);
-		if f>abs(dy) then
-		q-=f-abs(dy);
-	    f:=0.3*q/sqr(f);
-        result[0]:=rx*f;
-        result[1]:=ry*f;
-	  end else result:=zeroVec;
-    end;
-
   FUNCTION calculateAttraction(CONST x,y:longint):T_2dVector;
     CONST GAUSS_LEGENDRE_WEIGHT:array[0..4,0..4] of record d,w:TmyFloat; end
     =(((d: 0.0                ; w:1.0                ),(d: 0.0                ; w:0.0                ),(d:0.0                ; w:0.0                ),(d:0.0                ; w:0.0                ),(d:0.0              ; w:0.0                )),
@@ -128,8 +36,8 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
       ((d:-0.43056815579702629; w:0.17392742256872692),(d:-0.16999052179242816; w:0.3260725774312731 ),(d:0.16999052179242816; w:0.3260725774312731 ),(d:0.43056815579702629; w:0.17392742256872692),(d:0.0              ; w:0.0                )),
       ((d:-0.453089922969332  ; w:0.11846344252809454),(d:-0.26923465505284155; w:0.23931433524968324),(d:0.0                ; w:0.28444444444444444),(d:0.26923465505284155; w:0.23931433524968324),(d:0.453089922969332; w:0.11846344252809454)));
 
-    VAR distance:longint;
-        n,i,j:longint;
+    VAR distance:double;
+        n,i:longint;
     begin
       distance:=x*x+y*y;
       if      distance<=sqr( 2) then n:=4
@@ -138,148 +46,135 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
       else if distance<=sqr(16) then n:=1
       else                           n:=0;
 
+      n:=0;
+
       result:=zeroVec;
-      for i:=0 to n do for j:=0 to n do
-        result+=straightAttraction(x+GAUSS_LEGENDRE_WEIGHT[n,i].d,
-                                   y+GAUSS_LEGENDRE_WEIGHT[n,j].d)*
-                                    (GAUSS_LEGENDRE_WEIGHT[n,i].w*
-                                     GAUSS_LEGENDRE_WEIGHT[n,j].w);
+      for i:=0 to n do begin
+        //if (y<>0) or (abs(x-0.5)>0.6) then
+        result[0]+=straightAttraction(x-0.5 ,
+                                      y    +GAUSS_LEGENDRE_WEIGHT[n,i].d)[0]*
+                                            GAUSS_LEGENDRE_WEIGHT[n,i].w;
+        //if (x<>0) or (abs(y-0.5)>0.6) then
+        result[1]+=straightAttraction(x    +GAUSS_LEGENDRE_WEIGHT[n,i].d,
+                                      y-0.5                             )[1]*
+                                            GAUSS_LEGENDRE_WEIGHT[n,i].w;
+      end;
+      if distance>SYS_SIZE*SYS_SIZE then result*=exp(-0.5*(distance*(1/SYS_SIZE*SYS_SIZE)-1));
     end;
 
   VAR ix,iy:longint;
       symX,symY:longint;
   begin
-    //angle:=2.384022665*exp((stepIndex)*0.000840605354794374)-2.384022665;
-	//angle:=sqr(sqr(stepIndex/2500))*4*pi;
-	angle:=pi*stepIndex/250;
-	//Precision is 3° = 3/180*pi radians
-    if not(attractionInitialized) or (abs(angle-initialzedForAngle)>3/180*pi) then begin
-	  initialzedForAngle:=angle;
-	  cang:=cos(angle);
-      sang:=sin(angle);
-      append(logHandle);
-      writeln(logHandle,'Reinitializing attraction factors with angle ',(round(angle*180/pi)+180) mod 360-180,'°');
-      close(logHandle);
+    if reinitializeAttractionFactors(stepIndex) or not(attractionInitialized) then begin
+      log.append('(Re)initializing attraction factors').appendLineBreak;
+
       for ix:=-SYS_SIZE+1 to SYS_SIZE-1 do for iy:=-SYS_SIZE+1 to SYS_SIZE-1 do begin
-        if (ix>0) then begin
-          cachedAttraction[ix,iy]:=cachedAttraction[-ix,-iy]*(-1);
-        end else begin
-          cachedAttraction[ix][iy]:=zeroVec;
-          if (ix<>0) or (iy<>0) then
-          for symX:=-SYMMETRIC_CONTINUATION to SYMMETRIC_CONTINUATION do
-          for symY:=-SYMMETRIC_CONTINUATION to SYMMETRIC_CONTINUATION do
-            cachedAttraction[ix][iy]+=calculateAttraction(ix+symX*SYS_SIZE,iy+symY*SYS_SIZE);
-        end;
+        cachedAttraction[ix,iy]:=zeroVec;
+        for symX:=-SYMMETRIC_CONTINUATION to SYMMETRIC_CONTINUATION do
+        for symY:=-SYMMETRIC_CONTINUATION to SYMMETRIC_CONTINUATION do
+          cachedAttraction[ix,iy]+=calculateAttraction(ix+symX*SYS_SIZE,iy+symY*SYS_SIZE);
       end;
     end;
-	if not(attractionInitialized) then begin
+    if not(attractionInitialized) then begin
       for ix:=0 to SYS_SIZE-1 do begin
         box[ix]:=[];
-        for iy:=ix-20+SYS_SIZE to ix+20+SYS_SIZE do include(box[ix],byte(iy mod SYS_SIZE));
+        for iy:=ix-ATTRACTION_RANGE+SYS_SIZE to ix+ATTRACTION_RANGE+SYS_SIZE do include(box[ix],byte(iy mod SYS_SIZE));
       end;
-      for ix:=0 to SYS_SIZE-1 do for iy:=0 to SYS_SIZE-1 do with zeroSystem[ix,iy] do begin
-        mass:=0;
-        p:=zeroVec;
-      end;
-	  for ix:=0 to SYS_SIZE-1 do sinus_table[ix]:=sin(ix*2*pi/SYS_SIZE);
-	end;
+      for ix:=0 to SYS_SIZE-1 do sinus_table[ix]:=sin(ix*2*pi/(SYS_SIZE-1));
+    end;
     attractionInitialized:=true;
   end;
 
 { T_cellSystem }
 CONSTRUCTOR T_cellSystem.create;
-  VAR i,j:longint;
-      massFactor:double;
   begin
-    assign(logHandle,ChangeFileExt(paramStr(0),'.log'));
-    rewrite(logHandle);
-    close(logHandle);
-
-    if      hasCmdLineParameter(PARAM_LOW_DENSITY)  then massFactor:= 0.1
-    else if hasCmdLineParameter(PARAM_HIGH_DENSITY) then massFactor:= 1
-    else                                                 massFactor:=10;
-    for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
-      mass:=massFactor+0.001*random;
-      p:=zeroVec;
-    end;
-    //i:=SYS_SIZE div 2; value[i,i].mass:=100;
+    value:=getInitialState;
   end;
 
 DESTRUCTOR T_cellSystem.destroy;
   begin
   end;
 
-FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
-  VAR accel:array[0..SYS_SIZE-1,0..SYS_SIZE-1] of T_2dVector;
+FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
+  VAR stateDelta:T_systemState;
+      vNew,accel:T_vectorField;
 
-  PROCEDURE resetAcceleration;
-    VAR i,j:longint;
-    begin
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do
-        accel[i,j]:=zeroVec;
-    end;
-
-  PROCEDURE addGravAcceleration;
+  PROCEDURE setGravAcceleration;
     VAR i,j,oi,oj:longint;
         a: T_2dVector;
     begin
-      for i:=0 to SYS_SIZE-1 do
-      for j:=0 to SYS_SIZE-1 do begin
-        a:=accel[i,j];
-        for oi in box[i] do
-        for oj in box[j] do
-          a+=cachedAttraction[oi-i,oj-j]*value[oi,oj].mass;
-        accel[i,j]:=a;
+      if LIMITED_RANGE_ATTRACTION then begin
+        for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
+          a:=zeroVec;
+          for oi in box[i] do for oj in box[j] do
+            a+=cachedAttraction[oi-i,oj-j]*value[oi,oj].mass;
+          accel[i,j]:=a;
+        end;
+      end else begin
+        for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
+          a:=zeroVec;
+          for oi:=0 to SYS_SIZE-1 do for oj:=0 to SYS_SIZE-1 do
+            a+=cachedAttraction[oi-i,oj-j]*value[oi,oj].mass;
+          accel[i,j]:=a;
+        end;
       end;
     end;
 
-  PROCEDURE annihilate(CONST dtEff:TmyFloat);
-    CONST MASS_DIFFUSED=1E-3;
-          MASS_LOST=1E-2;
-          threshold    =5;
-          dv:array[-1..1,-1..1] of T_2dVector=(((-7.071, -7.071),(-10,0),(-7.071, 7.071)),
-                                               (( 0.0  ,-10    ),(  0,0),(     0,10    )),
-                                               (( 7.071, -7.071),( 10,0),( 7.071, 7.071)));
-          BLOW:array[-1..1,-1..1] of TmyFloat=
-          ((0.089812, 0.160187,0.089812),
-           (0.160187,-0.999996,0.160187),
-           (0.089812, 0.160187,0.089812));
-    VAR i,j:longint;
-        factor,
-        massDiffusion,
-        m_:TmyFloat;
-        di,dj:longint;
-        v0, v_:T_2dVector;
+  PROCEDURE addShallowWaterAcceleration;
+    CONST mask=SYS_SIZE-1;
+    VAR local:array[0..1,0..1] of double;
+        a:T_2dVector;
+        i,j,ip,jp:longint;
+    FUNCTION cap(CONST n:double):double; inline;
+      begin
+        if n<REPULSION_THRESHOLD
+        then result:=0
+        else result:=n-REPULSION_THRESHOLD;;
+      end;
+
     begin
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do if value[i,j].mass>threshold then begin
-        with value[i,j] do begin
-          v0  :=p*(1/mass);
-          factor:=dtEff*(mass-threshold);
-          massDiffusion:=factor*MASS_DIFFUSED;
-          factor*=MASS_LOST;
-          if factor>0.5 then factor:=0.5;
-          mass*=(1-factor);
-          p   *=(1-factor);
-          factor:=mass*0.2;
-          if massDiffusion>factor then massDiffusion:=factor;
-        end;
+      if (REPULSION_LINEAR<=0) then exit;
+      for i:=0 to SYS_SIZE-1 do begin
+        ip:=(i+1   ) and mask;
+        for j:=0 to SYS_SIZE-1 do begin
+          jp:=(j+1   ) and mask;
+          if j=0 then begin
+            local[0,0]:=cap(value[i ,j ].mass);
+            local[1,0]:=cap(value[ip,j ].mass);
+          end else begin
+            local[0,0]:=local[ 0, 1];
+            local[1,0]:=local[ 1, 1];
+          end;
+          local[0,1]:=cap(value[i ,jp].mass);
+          local[1,1]:=cap(value[ip,jp].mass);
 
-        //Blowout:
-        if massDiffusion>0 then
-        for di:=-1 to 1 do for dj:=-1 to 1 do with nextValue[(i+di+SYS_SIZE) mod SYS_SIZE,(j+dj+SYS_SIZE) mod SYS_SIZE] do begin
-          v_:=v0+dv[di,dj]*2;
-          m_:=massDiffusion*BLOW[di,dj];
-          mass+=m_;
-          p   +=v_*m_;
+          a[0]:=local[0,0]-local[1,0];
+          a[1]:=local[0,0]-local[0,1];
+          accel[i,j]+=a*REPULSION_LINEAR;
         end;
-      end else with value[i,j] do if mass<1 then begin
-        v0:=p*(1/(mass+1E-10));
-        mass+=1E-2*dtEff;
-        p:=v0*(mass+1E-10);
       end;
     end;
 
-  PROCEDURE modifyVelocities;
+  PROCEDURE annihilateOrRegrow(CONST dtEff:double);
+    VAR i, j: integer;
+        factor: double;
+        v:T_2dVector;
+    begin
+      if (ANNIHILATION_FACTOR<=0) and (REGROWTH_FACTOR<=0) then exit;
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
+        if mass>ANNIHILATION_THRESHOLD then begin
+          factor:=1-(mass-ANNIHILATION_THRESHOLD)*ANNIHILATION_FACTOR*dtEff+REGROWTH_FACTOR/mass*dtEff;
+          mass*=factor;
+          p   *=factor;
+        end else if (REGROWTH_FACTOR>0) then begin
+          v   :=p*(1/(epsilon+mass));
+          mass+=REGROWTH_FACTOR*dtEff;
+          p   :=v*mass;
+        end;
+      end;
+    end;
+
+  PROCEDURE addDrift;
     VAR pTot:T_2dVector=(0,0);
         mTot:TmyFloat=0;
         deltaV:T_2dVector=(0,0);
@@ -291,144 +186,157 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST index:longint): boolean;
         deltaV[0]+=mass*sinus_table[i];
         deltaV[1]+=mass*sinus_table[j];
       end;
-      deltaV:=(deltaV-pTot*0.5)*(0.1/mTot);
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
-        p:=(p*(1/(mass+1E-10))+deltaV);
-		p*=(1-sqrt(sqr(p[0])+sqr(p[1]))*1E-2*dt)*(mass+1E-10);		
-      end;
+      deltaV:=(deltaV-pTot*0.5)*(20/mTot);
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do accel[i,j]+=deltaV;
     end;
 
-  FUNCTION getSubStepsToTake:longint;
+  VAR capping:boolean=false;
+  PROCEDURE transport(VAR dtRest:TmyFloat; OUT dtEff:TmyFloat);
+    CONST mask=SYS_SIZE-1;
+          DT_MIN=dt/200; //not more than 200 sub steps
+          MAX_COURANT_NUMBER=0.25; //Worst case: outflow from a cell in all four directions
+          SAFE_COURANT_NUMBER=0.2;
+          SPEED_CAP=SAFE_COURANT_NUMBER*GRID_SIZE/DT_MIN;
+
     VAR i,j:longint;
-        X:TmyFloat=0;
-        vMax:TmyFloat=0;
-        N:TmyFloat;
+        f:double;
+        transportedMass:TmyFloat;
+        transportedFlow:T_2dVector;
+
+        fMax:double=1E50;
+        aLocal:T_2dVector;
+
     begin
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do if value[i,j].mass>1E-2 then begin
-        N:=sqr(accel[i,j,0])+sqr(accel[i,j,1]);
-        if N>X then X:=N;
-        N:=(sqr(value[i,j].p[0])+sqr(value[i,j].p[1]))/sqr(value[i,j].mass);
-        if N>vMax then vMax:=N;
+      dtEff:=dtRest;
+      while (fMax*dtEff/GRID_SIZE>MAX_COURANT_NUMBER) do begin
+        fMax:=0;
+        //Calculate effective flow from ((p[i+1]+p[i])/(m[i+1]+m[i])+a[i]*dtRest)*dtRest
+        for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
+          vNew[i,j,0]:=((value[i,j].p[0]+value[(i+1) and mask,j].p[0])/
+                (epsilon+value[i,j].mass+value[(i+1) and mask,j].mass)+accel[i,j,0]*dtEff);
+          vNew[i,j,1]:=((value[i,j].p[1]+value[i,(j+1) and mask].p[1])/
+                (epsilon+value[i,j].mass+value[i,(j+1) and mask].mass)+accel[i,j,1]*dtEff);
+
+          f:=abs(vNew[i,j,0]); if f>fMax then fMax:=f;
+          f:=abs(vNew[i,j,1]); if f>fMax then fMax:=f;
+        end;
+        //Reduce time step if neccessary
+        if (fMax*dtEff/GRID_SIZE>MAX_COURANT_NUMBER) then begin
+          dtEff:=SAFE_COURANT_NUMBER*GRID_SIZE/fMax;
+          if dtEff<DT_MIN then begin
+            dtEff:=DT_MIN;
+            fMax:=0;
+            if not(capping) then log.append('WARNING: Speed limit exceeded. Capping...').appendLineBreak;
+            capping:=true;
+          end;
+          if dtEff>dtRest
+          then dtEff:=dtRest
+          else dtEff:=dtRest/ceil(dtRest/dtEff);
+        end;
       end;
-      result:=trunc(sqrt(sqrt(X)/MAX_ACCELERATION_RANGE)*dt+1);
-      i     :=trunc(sqrt(vMax)*dt*0.5+1);
-      if result<i then result:=i;
-      if result<1 then result:=1
-      else if result>100 then result:=100;
+
+      if capping then for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do
+        if mass<UPPER_BLACK_LEVEL then p:=zeroVec
+        else begin
+          //squared speed:
+          f:=(sqr(p[0])+sqr(p[1]))/(epsilon+sqr(mass));
+          if f>SPEED_CAP*SPEED_CAP then p*=SPEED_CAP/sqrt(f);
+        end;
+
+      //Apply acceleration to cell flows:
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
+        aLocal[0]:=accel[i,j,0]+accel[(i+mask) and mask,j,0];
+        aLocal[1]:=accel[i,j,1]+accel[i,(j+mask) and mask,1];
+        value[i,j].p+=aLocal*(value[i,j].mass*0.5*dtEff);
+      end;
+
+      //Upwind transport
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with stateDelta[i,j] do begin mass:=0; p:=zeroVec; end;
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
+        f:=vNew[i,j,0]*dtEff/GRID_SIZE;
+        if f>0 then begin
+          transportedMass:=value[i,j].mass*f;
+          transportedFlow:=value[i,j].p   *f;
+        end else begin
+          transportedMass:=value[(i+1) and mask,j].mass*f;
+          transportedFlow:=value[(i+1) and mask,j].p   *f;
+        end;
+        stateDelta[i             ,j].mass-=transportedMass;
+        stateDelta[i             ,j].p   -=transportedFlow;
+        stateDelta[(i+1) and mask,j].mass+=transportedMass;
+        stateDelta[(i+1) and mask,j].p   +=transportedFlow;
+
+        f:=vNew[i,j,1]*dtEff/GRID_SIZE;
+        if f>0 then begin
+          transportedMass:=value[i,j].mass*f;
+          transportedFlow:=value[i,j].p   *f;
+        end else begin
+          transportedMass:=value[i,(j+1) and mask].mass*f;
+          transportedFlow:=value[i,(j+1) and mask].p   *f;
+        end;
+        stateDelta[i,j             ].mass-=transportedMass;
+        stateDelta[i,j             ].p   -=transportedFlow;
+        stateDelta[i,(j+1) and mask].mass+=transportedMass;
+        stateDelta[i,(j+1) and mask].p   +=transportedFlow;
+      end;
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
+        value[i,j].mass+=stateDelta[i,j].mass;
+        value[i,j].p   +=stateDelta[i,j].p;
+        if (value[i,j].mass<=0) or isNan(value[i,j].mass) or isInfinite(value[i,j].mass) then begin
+          value[i,j].mass:=epsilon;
+          value[i,j].p   :=zeroVec;
+        end;
+      end;
+      //decrement remaining time to take
+      dtRest-=dtEff;
     end;
 
-  VAR subStepsToTake:longint;
-      dtSub:TmyFloat;
-      sub,i,j,ti,tj,tj_:longint;
-
-      m,w:double;
-      v,x:T_2dVector;
+  VAR subStepsTaken:longint=0;
+      dtRest, dtEff:TmyFloat;
+      i,j:longint;
+      m:double=0;
       start:double;
 
   begin
     start:=now;
-    ensureAttractionFactors(index);
+    ensureAttractionFactors(timeStepIndex);
     result:=false;
-    //modifyVelocities;
 
-    resetAcceleration;
-    addGravAcceleration;
-    subStepsToTake:=getSubStepsToTake;
-    dtSub:=dt/subStepsToTake;
-
-    for sub:=1 to subStepsToTake do begin
-      if sub>1 then begin
-        resetAcceleration;
-        addGravAcceleration;
-      end;
-      nextValue:=zeroSystem;
-
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
-        m:=value[i,j].mass;
-        v:=value[i,j].p*(1/(1E-10+m))+accel[i,j]*dtSub;
-
-        x[0]:=i+v[0]*dtSub/GRID_SIZE; while x[0]<0 do x[0]+=SYS_SIZE;
-        x[1]:=j+v[1]*dtSub/GRID_SIZE; while x[1]<0 do x[1]+=SYS_SIZE;
-        ti:=trunc(x[0]); x[0]-=ti; ti:=ti mod SYS_SIZE;
-        tj:=trunc(x[1]); x[1]-=tj; tj:=tj mod SYS_SIZE;
-                              tj_:=(tj+1) mod SYS_SIZE;
-        v*=(1E-10+m);
-
-        w:=(1-x[0])*(1-x[1]);
-        nextValue[ti,tj].mass+=m*w;
-        nextValue[ti,tj].p   +=v*w;
-
-        w:=(1-x[0])*(  x[1]);
-        nextValue[ti,tj_].mass+=m*w;
-        nextValue[ti,tj_].p   +=v*w;
-
-        ti:=(ti+1) mod SYS_SIZE;
-        w:=   x[0] *(1-x[1]);
-        nextValue[ti,tj].mass+=m*w;
-        nextValue[ti,tj].p   +=v*w;
-
-        w:=   x[0] *(  x[1]);
-        nextValue[ti,tj_].mass+=m*w;
-        nextValue[ti,tj_].p   +=v*w;
-      end;
-      value:=nextValue;
-
-      nextValue:=zeroSystem;
-      annihilate(dtSub);
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
-        mass+=nextValue[i,j].mass;
-        p   +=nextValue[i,j].p;
-      end;
+    dtRest:=dt;
+    while dtRest>0 do begin
+      setGravAcceleration;
+      if DRIFT_TO_CENTER then addDrift;
+      addBackgroundAcceleration(timeStepIndex,accel);
+      addShallowWaterAcceleration;
+      transport(dtRest,dtEff);
+      annihilateOrRegrow(dtEff);
+      inc(subStepsTaken)
     end;
-    m:=0;
+
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do m+=value[i,j].mass;
     m*=GRID_SIZE*GRID_SIZE;
-    append(logHandle);
-    writeln(logHandle,'Step ',index,' done: ',(now-start)*24*60*60:0:5,'s; ',subStepsToTake,' sub steps; mass=',m:0:6);
-    close(logHandle);
+    log.append('Step ')
+       .append(timeStepIndex)
+       .append(' done: ')
+       .append((now-start)*24*60*60,3)
+       .append('s; ')
+       .append(subStepsTaken)
+       .append(' sub steps; mass=')
+       .append(m,3)
+       .appendLineBreak;
   end;
 
-FUNCTION T_cellSystem.getPicture(CONST displayWidth, displayHeight: longint): P_rgbPicture;
-  FUNCTION colorOf(CONST m:TmyFloat):T_rgbColor;
-    FUNCTION validByte(CONST s:single):byte;
-      begin
-        if s<0 then result:=0
-        else if s>1 then result:=255
-        else result:=round(255*s);
-      end;
-
-    VAR k:double;
-    begin
-      k:=sqrt(m);
-      result[0]:=0;
-      result[1]:=0;
-      result[2]:=0;
-
-      if k<0.5 then result[2]:=validByte(k) else
-      if k<1.5 then begin
-        result[0]:=validByte(k-0.5);
-        result[2]:=validByte(1-k  );
-      end else begin
-        result[0]:=validByte(k-0.5);
-        result[1]:=validByte(k-1.5);
-        result[2]:=validByte(k-2.5);
-      end;
-    end;
-
+FUNCTION T_cellSystem.getPicture: P_rgbPicture;
   VAR i,j:longint;
-      totalMass:double=0;
   begin
-    new(result,create(SYS_SIZE,SYS_SIZE));
-    for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
-      result^.pixel[i,j]:=colorOf(mass);
-      totalMass+=mass;
-    end;
-    result^.mass:=totalMass*GRID_SIZE*GRID_SIZE;
+    new(result,create);
+    for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do result^.setPixel(i,j,mass);
+    result^.mass*=GRID_SIZE*GRID_SIZE;
   end;
 
 FUNCTION T_cellSystem.getSerialVersion: dword;
   begin
-    result:=31+SYS_SIZE;
+    result:=31356+SYS_SIZE;
   end;
 
 FUNCTION T_cellSystem.loadFromStream(VAR stream: T_bufferedInputStreamWrapper): boolean;

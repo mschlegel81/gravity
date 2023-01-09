@@ -6,13 +6,14 @@ CONST
   dt                    =0.05;
   GRID_SIZE             =1;
 
-  LIMITED_RANGE_ATTRACTION=true;
-  ATTRACTION_RANGE        =20;
+  LIMITED_RANGE_ATTRACTION=false;
+  ATTRACTION_RANGE        =256;
 
   DRIFT_TO_CENTER=true;
 
-  REPULSION_THRESHOLD=5;
-  REPULSION_LINEAR   =10;
+  REPULSION_THRESHOLD=0;
+  REPULSION_LINEAR   =0;
+  REPULSION_QUADRATIC=1;
 
   ANNIHILATION_THRESHOLD=5;
   ANNIHILATION_FACTOR   =1E-4;
@@ -34,8 +35,7 @@ FUNCTION straightAttraction(CONST rx,ry:TmyFloat):T_2dVector;
   VAR d:TmyFloat;
   begin
     d:=sqrt(rx*rx+ry*ry);
-	if d>20 then exit(zeroVec);
-    d:=1/(1E-10+d*sqr(d));
+	d:=1/(1E-10+d*sqr(d));
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;

@@ -129,11 +129,14 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
       begin
         if n<REPULSION_THRESHOLD
         then result:=0
-        else result:=n-REPULSION_THRESHOLD;;
+        else begin
+          result:=n-REPULSION_THRESHOLD;
+          result:=result*(REPULSION_LINEAR+result*REPULSION_QUADRATIC);
+        end;
       end;
 
     begin
-      if (REPULSION_LINEAR<=0) then exit;
+      if (REPULSION_LINEAR<=0) AND (REPULSION_QUADRATIC<=0) then exit;
       for i:=0 to SYS_SIZE-1 do begin
         ip:=(i+1   ) and mask;
         for j:=0 to SYS_SIZE-1 do begin
@@ -150,7 +153,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
 
           a[0]:=local[0,0]-local[1,0];
           a[1]:=local[0,0]-local[0,1];
-          accel[i,j]+=a*REPULSION_LINEAR;
+          accel[i,j]+=a;
         end;
       end;
     end;

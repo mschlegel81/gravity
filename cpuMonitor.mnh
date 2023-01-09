@@ -36,6 +36,7 @@ main->begin
         cpuLoad;
       end;
   end);
+  hideConsole;
   local q:=round(scriptTime);
   while(scriptTime<lastQueried+60,begin
     sleepUntil(q+=1);

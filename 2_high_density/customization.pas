@@ -2,40 +2,49 @@ UNIT customization;
 INTERFACE
 USES vectors,commandLineHandling;
 CONST
-  SYMMETRIC_CONTINUATION=20;
+  SYMMETRIC_CONTINUATION=1;
   dt                    =0.05;
   GRID_SIZE             =1;
 
-  LIMITED_RANGE_ATTRACTION=false;
-  ATTRACTION_RANGE        =256;
+  LIMITED_RANGE_ATTRACTION=true;
+  ATTRACTION_RANGE        =20;
 
-  DRIFT_TO_CENTER=true;
-
-  REPULSION_THRESHOLD=0;
-  REPULSION_LINEAR   =0;
+  REPULSION_THRESHOLD=1;
+  REPULSION_LINEAR   =2.5;
   REPULSION_QUADRATIC=1;
 
   ANNIHILATION_THRESHOLD=5;
-  ANNIHILATION_FACTOR   =1E-4;
+  ANNIHILATION_FACTOR   =0;
 
   REGROWTH_FACTOR=0;
+  DIFFUSION_BY_VELOCITY=0.001;
+  DIFFUSION_BASE       =0.5;  
+
+VAR DRIFT_TO_CENTER:boolean=false;
 
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:TmyFloat):T_2dVector;
 FUNCTION getInitialState:T_systemState;
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:longint; VAR accel:T_vectorField);
 IMPLEMENTATION
-
+VAR forceFactor:double=0;
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
-  begin
-    result:=false;
+  begin  
+    result:=(timeStepIndex mod 20=0);
+	forceFactor:=0.1E-3*(timeStepIndex mod 1000);
+	if timeStepIndex mod 1000>=800 then begin
+	  forceFactor:=0;
+	  DRIFT_TO_CENTER:=false;
+	end else DRIFT_TO_CENTER:=true;  
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:TmyFloat):T_2dVector;
   VAR d:TmyFloat;
   begin
     d:=sqrt(rx*rx+ry*ry);
-	d:=1/(1E-10+d*sqr(d));
+	if d>20 
+	then exit(zeroVec)
+	else d:=forceFactor*(1+cos(d*pi/ATTRACTION_RANGE))/d;	
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;
@@ -45,9 +54,9 @@ FUNCTION getInitialState: T_systemState;
       massFactor:double;
   begin
     case initialDensityVariant of
-      id_low:  massFactor:= 0.1;
+      id_low:  massFactor:= 0.5;
       id_high: massFactor:= 1;
-      else     massFactor:=10;
+      else     massFactor:= 2;
     end;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with result[i,j] do begin
       mass:=massFactor+0.001*random;

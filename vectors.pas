@@ -9,6 +9,7 @@ TYPE
   T_systemState=array[0..SYS_SIZE-1,0..SYS_SIZE-1] of record mass:TmyFloat; p:T_2dVector; end;
   T_vectorField=array[0..SYS_SIZE-1,0..SYS_SIZE-1] of T_2dVector;
 CONST
+  epsilon=1E-10;
   zeroVec:T_2dVector=(0,0);
 
 OPERATOR *(CONST x:T_2dVector; CONST y:TmyFloat):T_2dVector;

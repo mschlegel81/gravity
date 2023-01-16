@@ -12,14 +12,16 @@ CONST
   DRIFT_TO_CENTER=true;
 
   REPULSION_THRESHOLD=0;
-  REPULSION_LINEAR   =1/0.25;
-  REPULSION_QUADRATIC=0.01;
+  REPULSION_LINEAR   =0.5;
+  REPULSION_QUADRATIC=0;
 
   ANNIHILATION_THRESHOLD=5;
   ANNIHILATION_FACTOR   =1E-4;
 
   REGROWTH_FACTOR=0;
-
+  DIFFUSION_BY_VELOCITY=0.02;
+  DIFFUSION_BASE       =0.05;
+  
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:TmyFloat):T_2dVector;
 FUNCTION getInitialState:T_systemState;

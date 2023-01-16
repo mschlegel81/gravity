@@ -9,6 +9,7 @@ TYPE
     private
       value:T_systemState;
     public
+      numberOfFrames:longint;
       CONSTRUCTOR create;
       DESTRUCTOR destroy;
 
@@ -21,7 +22,6 @@ TYPE
 
 IMPLEMENTATION
 USES sysutils,customization,math;
-CONST epsilon=1E-10;
 VAR cachedAttraction:array [-SYS_SIZE+1..SYS_SIZE-1,-SYS_SIZE+1..SYS_SIZE-1] of T_2dVector;
     attractionInitialized:boolean=false;
     sinus_table:array[0..SYS_SIZE-1] of TmyFloat;
@@ -37,7 +37,7 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
       ((d:-0.453089922969332  ; w:0.11846344252809454),(d:-0.26923465505284155; w:0.23931433524968324),(d:0.0                ; w:0.28444444444444444),(d:0.26923465505284155; w:0.23931433524968324),(d:0.453089922969332; w:0.11846344252809454)));
 
     VAR distance:double;
-        n,i:longint;
+        n,i,j:longint;
     begin
       distance:=x*x+y*y;
       if      distance<=sqr( 2) then n:=4
@@ -46,19 +46,12 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
       else if distance<=sqr(16) then n:=1
       else                           n:=0;
 
-      n:=0;
-
       result:=zeroVec;
-      for i:=0 to n do begin
-        //if (y<>0) or (abs(x-0.5)>0.6) then
-        result[0]+=straightAttraction(x-0.5 ,
-                                      y    +GAUSS_LEGENDRE_WEIGHT[n,i].d)[0]*
-                                            GAUSS_LEGENDRE_WEIGHT[n,i].w;
-        //if (x<>0) or (abs(y-0.5)>0.6) then
-        result[1]+=straightAttraction(x    +GAUSS_LEGENDRE_WEIGHT[n,i].d,
-                                      y-0.5                             )[1]*
-                                            GAUSS_LEGENDRE_WEIGHT[n,i].w;
-      end;
+      if (x<>0) or (y<>0) then for i:=0 to n do for j:=0 to n do
+        result+=straightAttraction(x+GAUSS_LEGENDRE_WEIGHT[n,i].d,
+                                   y+GAUSS_LEGENDRE_WEIGHT[n,j].d)
+                                 *(  GAUSS_LEGENDRE_WEIGHT[n,i].w
+                                    *GAUSS_LEGENDRE_WEIGHT[n,j].w);
       if distance>SYS_SIZE*SYS_SIZE then result*=exp(-0.5*(distance*(1/SYS_SIZE*SYS_SIZE)-1));
     end;
 
@@ -69,10 +62,15 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
       log.append('(Re)initializing attraction factors').appendLineBreak;
 
       for ix:=-SYS_SIZE+1 to SYS_SIZE-1 do for iy:=-SYS_SIZE+1 to SYS_SIZE-1 do begin
-        cachedAttraction[ix,iy]:=zeroVec;
-        for symX:=-SYMMETRIC_CONTINUATION to SYMMETRIC_CONTINUATION do
-        for symY:=-SYMMETRIC_CONTINUATION to SYMMETRIC_CONTINUATION do
-          cachedAttraction[ix,iy]+=calculateAttraction(ix+symX*SYS_SIZE,iy+symY*SYS_SIZE);
+        //Due to symmetry considerations, only half of the entries have to be calculated
+        if (ix>0) or (ix=0) and (iy>0)
+        then cachedAttraction[ix,iy]:=cachedAttraction[-ix,-iy]*-1
+        else begin
+          cachedAttraction[ix,iy]:=zeroVec;
+          for symX:=-SYMMETRIC_CONTINUATION to SYMMETRIC_CONTINUATION do
+          for symY:=-SYMMETRIC_CONTINUATION to SYMMETRIC_CONTINUATION do
+            cachedAttraction[ix,iy]+=calculateAttraction(ix+symX*SYS_SIZE,iy+symY*SYS_SIZE);
+        end;
       end;
     end;
     if not(attractionInitialized) then begin
@@ -80,7 +78,7 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
         box[ix]:=[];
         for iy:=ix-ATTRACTION_RANGE+SYS_SIZE to ix+ATTRACTION_RANGE+SYS_SIZE do include(box[ix],byte(iy mod SYS_SIZE));
       end;
-      for ix:=0 to SYS_SIZE-1 do sinus_table[ix]:=sin(ix*2*pi/(SYS_SIZE-1));
+      for ix:=0 to SYS_SIZE-1 do sinus_table[ix]:=sin(ix*2*pi/SYS_SIZE);
     end;
     attractionInitialized:=true;
   end;
@@ -96,8 +94,9 @@ DESTRUCTOR T_cellSystem.destroy;
   end;
 
 FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
-  VAR stateDelta:T_systemState;
-      vNew,accel:T_vectorField;
+  VAR newState:T_systemState;
+      cellCenteredAcceleration:T_vectorField;
+      masses:array[0..SYS_SIZE-1,0..SYS_SIZE-1] of TmyFloat;
 
   PROCEDURE setGravAcceleration;
     VAR i,j,oi,oj:longint;
@@ -108,23 +107,48 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
           a:=zeroVec;
           for oi in box[i] do for oj in box[j] do
             a+=cachedAttraction[oi-i,oj-j]*value[oi,oj].mass;
-          accel[i,j]:=a;
+          cellCenteredAcceleration[i,j]:=a;
         end;
       end else begin
+        for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do masses[i,j]:=value[i,j].mass;
         for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
           a:=zeroVec;
           for oi:=0 to SYS_SIZE-1 do for oj:=0 to SYS_SIZE-1 do
-            a+=cachedAttraction[oi-i,oj-j]*value[oi,oj].mass;
-          accel[i,j]:=a;
+            //a+=cachedAttraction[oi-i,oj-j]*value[oi,oj].mass;
+            a+=cachedAttraction[oi-i,oj-j]*masses[oi,oj];
+          cellCenteredAcceleration[i,j]:=a;
         end;
       end;
     end;
 
-  PROCEDURE addShallowWaterAcceleration;
+  PROCEDURE addPressureAccelerationAndDrift;
     CONST mask=SYS_SIZE-1;
-    VAR local:array[0..1,0..1] of double;
+          WEIGHT:array[-2..2,-2..2] of T_2dVector=(
+            (( 0.08658977081756744,0.08658977081756744),( 0.2693962929060643,0.13469814645303216),( 0.4065696597405991,0.0),( 0.2693962929060643,-0.13469814645303216),( 0.08658977081756744,-0.08658977081756744)),
+            (( 0.13469814645303216,0.2693962929060643 ),( 0.523837587470595 ,0.523837587470595  ),( 1.0               ,0.0),( 0.523837587470595 ,-0.523837587470595  ),( 0.13469814645303216,-0.2693962929060643)),
+            (( 0.0                ,0.4065696597405991 ),( 0.0               ,1.0                ),( 0.0               ,0.0),( 0.0               ,-1.0                ),( 0.0                ,-0.4065696597405991)),
+            ((-0.13469814645303216,0.2693962929060643 ),(-0.523837587470595 ,0.523837587470595  ),(-1.0               ,0.0),(-0.523837587470595 ,-0.523837587470595  ),(-0.13469814645303216,-0.2693962929060643)),
+            ((-0.08658977081756744,0.08658977081756744),(-0.2693962929060643,0.13469814645303216),(-0.4065696597405991,0.0),(-0.2693962929060643,-0.13469814645303216),(-0.08658977081756744,-0.08658977081756744)));
+{MNH-source for weight:
+        [-2..2].each(x,
+        [-2..2].each(y,begin
+          local dir:=[x,y]; x=y=0 ? void : dir/=-dir.euklideanNorm;
+          dir*exp(-0.3*(sqr(x)+sqr(y)));
+        end))
+        ./(exp(-0.3))
+        .toString
+        .replace('[','(')
+        .replace(']',')');
+}
+    VAR local:array[-2..2,-2..2] of double;
         a:T_2dVector;
+        i_:array[-2..2] of longint;
         i,j,ip,jp:longint;
+
+    VAR pTot:T_2dVector=(0,0);
+        mTot:TmyFloat=0;
+        deltaV:T_2dVector=(0,0);
+
     FUNCTION cap(CONST n:double):double; inline;
       begin
         if n<REPULSION_THRESHOLD
@@ -136,160 +160,177 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
       end;
 
     begin
-      if (REPULSION_LINEAR<=0) AND (REPULSION_QUADRATIC<=0) then exit;
-      for i:=0 to SYS_SIZE-1 do begin
-        ip:=(i+1   ) and mask;
-        for j:=0 to SYS_SIZE-1 do begin
-          jp:=(j+1   ) and mask;
-          if j=0 then begin
-            local[0,0]:=cap(value[i ,j ].mass);
-            local[1,0]:=cap(value[ip,j ].mass);
-          end else begin
-            local[0,0]:=local[ 0, 1];
-            local[1,0]:=local[ 1, 1];
-          end;
-          local[0,1]:=cap(value[i ,jp].mass);
-          local[1,1]:=cap(value[ip,jp].mass);
-
-          a[0]:=local[0,0]-local[1,0];
-          a[1]:=local[0,0]-local[0,1];
-          accel[i,j]+=a;
-        end;
-      end;
-    end;
-
-  PROCEDURE annihilateOrRegrow(CONST dtEff:double);
-    VAR i, j: integer;
-        factor: double;
-        v:T_2dVector;
-    begin
-      if (ANNIHILATION_FACTOR<=0) and (REGROWTH_FACTOR<=0) then exit;
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
-        if mass>ANNIHILATION_THRESHOLD then begin
-          factor:=1-(mass-ANNIHILATION_THRESHOLD)*ANNIHILATION_FACTOR*dtEff+REGROWTH_FACTOR/mass*dtEff;
-          mass*=factor;
-          p   *=factor;
-        end else if (REGROWTH_FACTOR>0) then begin
-          v   :=p*(1/(epsilon+mass));
-          mass+=REGROWTH_FACTOR*dtEff;
-          p   :=v*mass;
-        end;
-      end;
-    end;
-
-  PROCEDURE addDrift;
-    VAR pTot:T_2dVector=(0,0);
-        mTot:TmyFloat=0;
-        deltaV:T_2dVector=(0,0);
-        i, j: integer;
-    begin
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
         pTot+=p;
         mTot+=mass;
         deltaV[0]+=mass*sinus_table[i];
         deltaV[1]+=mass*sinus_table[j];
       end;
-      deltaV:=(deltaV-pTot*0.5)*(20/mTot);
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do accel[i,j]+=deltaV;
+      if DRIFT_TO_CENTER
+      then deltaV:=(deltaV-pTot*0.5)*( 20/mTot)
+      else deltaV:=        pTot*(-      1/mTot);
+
+      if (REPULSION_LINEAR=0) AND (REPULSION_QUADRATIC=0)
+      then for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do cellCenteredAcceleration[i,j]+=deltaV
+      else begin
+        for i:=0 to SYS_SIZE-1 do begin
+          i_[-2]:=(i+mask+mask) and mask;
+          i_[-1]:=(i+mask     ) and mask;
+          i_[ 0]:= i                    ;
+          i_[ 1]:=(i+1        ) and mask;
+          i_[ 2]:=(i+2        ) and mask;
+          for j:=0 to SYS_SIZE-1 do begin
+            if j=0 then begin
+              local[-2,-2]:=cap(value[i_[-2],(j+mask+mask) and mask].mass);
+              local[-2,-1]:=cap(value[i_[-2],(j+mask     ) and mask].mass);
+              local[-2, 0]:=cap(value[i_[-2], j                    ].mass);
+              local[-2, 1]:=cap(value[i_[-2],(j+1)         and mask].mass);
+              local[-2, 2]:=cap(value[i_[-2],(j+2)         and mask].mass);
+
+              local[-1,-2]:=cap(value[i_[-1],(j+mask+mask) and mask].mass);
+              local[-1,-1]:=cap(value[i_[-1],(j+mask     ) and mask].mass);
+              local[-1, 0]:=cap(value[i_[-1], j                    ].mass);
+              local[-1, 1]:=cap(value[i_[-1],(j+1)         and mask].mass);
+              local[-1, 2]:=cap(value[i_[-1],(j+2)         and mask].mass);
+
+              local[ 0,-2]:=cap(value[i     ,(j+mask+mask) and mask].mass);
+              local[ 0,-1]:=cap(value[i     ,(j+mask     ) and mask].mass);
+              local[ 0, 0]:=cap(value[i     , j                    ].mass);
+              local[ 0, 1]:=cap(value[i     ,(j+1)         and mask].mass);
+              local[ 0, 2]:=cap(value[i     ,(j+2)         and mask].mass);
+
+              local[ 1,-2]:=cap(value[i_[ 1],(j+mask+mask) and mask].mass);
+              local[ 1,-1]:=cap(value[i_[ 1],(j+mask     ) and mask].mass);
+              local[ 1, 0]:=cap(value[i_[ 1], j                    ].mass);
+              local[ 1, 1]:=cap(value[i_[ 1],(j+1)         and mask].mass);
+              local[ 1, 2]:=cap(value[i_[ 1],(j+2)         and mask].mass);
+
+              local[ 2,-2]:=cap(value[i_[ 2],(j+mask+mask) and mask].mass);
+              local[ 2,-1]:=cap(value[i_[ 2],(j+mask     ) and mask].mass);
+              local[ 2, 0]:=cap(value[i_[ 2], j                    ].mass);
+              local[ 2, 1]:=cap(value[i_[ 2],(j+1)         and mask].mass);
+              local[ 2, 2]:=cap(value[i_[ 2],(j+2)         and mask].mass);
+            end else begin
+              local[-2,-2]:=local[-2,-1];
+              local[-2,-1]:=local[-2, 0];
+              local[-2, 0]:=local[-2, 1];
+              local[-2, 1]:=local[-2, 2];
+              local[-2, 2]:=cap(value[i_[-2],(j+2)         and mask].mass);
+
+              local[-1,-2]:=local[-1,-1];
+              local[-1,-1]:=local[-1, 0];
+              local[-1, 0]:=local[-1, 1];
+              local[-1, 1]:=local[-1, 2];
+              local[-1, 2]:=cap(value[i_[-1],(j+2)         and mask].mass);
+
+              local[ 0,-2]:=local[ 0,-1];
+              local[ 0,-1]:=local[ 0, 0];
+              local[ 0, 0]:=local[ 0, 1];
+              local[ 0, 1]:=local[ 0, 2];
+              local[ 0, 2]:=cap(value[i     ,(j+2)         and mask].mass);
+
+              local[ 1,-2]:=local[ 1,-1];
+              local[ 1,-1]:=local[ 1, 0];
+              local[ 1, 0]:=local[ 1, 1];
+              local[ 1, 1]:=local[ 1, 2];
+              local[ 1, 2]:=cap(value[i_[ 1],(j+2)         and mask].mass);
+
+              local[ 2,-2]:=local[ 2,-1];
+              local[ 2,-1]:=local[ 2, 0];
+              local[ 2, 0]:=local[ 2, 1];
+              local[ 2, 1]:=local[ 2, 2];
+              local[ 2, 2]:=cap(value[i_[ 2],(j+2)         and mask].mass);
+            end;
+            a:=deltaV;
+            for ip:=-2 to 2 do for jp:=-2 to 2 do a+=WEIGHT[ip,jp]*local[ip,jp];
+            cellCenteredAcceleration[i,j]+=a;
+          end;
+        end;
+      end;
     end;
 
   VAR capping:boolean=false;
   PROCEDURE transport(VAR dtRest:TmyFloat; OUT dtEff:TmyFloat);
     CONST mask=SYS_SIZE-1;
           DT_MIN=dt/200; //not more than 200 sub steps
-          MAX_COURANT_NUMBER=0.25; //Worst case: outflow from a cell in all four directions
-          SAFE_COURANT_NUMBER=0.2;
-          SPEED_CAP=SAFE_COURANT_NUMBER*GRID_SIZE/DT_MIN;
+          MAX_TRANSPORT_RANGE =5*dt;
+          SPEED_CAP=0.1*MAX_TRANSPORT_RANGE/DT_MIN;
 
-    VAR i,j:longint;
+    VAR i,j,ti,tj:longint;
+        x0,x1,y0,y1,
+        wx,wy:double;
+        v:T_2dVector;
         f:double;
-        transportedMass:TmyFloat;
-        transportedFlow:T_2dVector;
-
-        fMax:double=1E50;
-        aLocal:T_2dVector;
-
     begin
       dtEff:=dtRest;
-      while (fMax*dtEff/GRID_SIZE>MAX_COURANT_NUMBER) do begin
-        fMax:=0;
-        //Calculate effective flow from ((p[i+1]+p[i])/(m[i+1]+m[i])+a[i]*dtRest)*dtRest
-        for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
-          vNew[i,j,0]:=((value[i,j].p[0]+value[(i+1) and mask,j].p[0])/
-                (epsilon+value[i,j].mass+value[(i+1) and mask,j].mass)+accel[i,j,0]*dtEff);
-          vNew[i,j,1]:=((value[i,j].p[1]+value[i,(j+1) and mask].p[1])/
-                (epsilon+value[i,j].mass+value[i,(j+1) and mask].mass)+accel[i,j,1]*dtEff);
+      // |dtEff * v| <= MAX_TRANSPORT_RANGE
+      // |dtEff * (dv/dx)| <= MAX_DIVERGENCE_RANGE
+      // (dv/dx) =
+      // abs(ax[i-1/2]-ax[i+1/2])*dtEff*dtEff <= MAX_DIVERGENCE_RANGE
 
-          f:=abs(vNew[i,j,0]); if f>fMax then fMax:=f;
-          f:=abs(vNew[i,j,1]); if f>fMax then fMax:=f;
-        end;
-        //Reduce time step if neccessary
-        if (fMax*dtEff/GRID_SIZE>MAX_COURANT_NUMBER) then begin
-          dtEff:=SAFE_COURANT_NUMBER*GRID_SIZE/fMax;
-          if dtEff<DT_MIN then begin
-            dtEff:=DT_MIN;
-            fMax:=0;
-            if not(capping) then log.append('WARNING: Speed limit exceeded. Capping...').appendLineBreak;
-            capping:=true;
+      //Step size control...
+      wx:=epsilon;
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do if mass>UPPER_C1_LEVEL then begin
+        f:=(p[0]*p[0]+p[1]*p[1])/(mass*mass);
+        if f>wx then wx:=f;
+      end;
+      wx:=sqrt(wx);  //wx= vMax
+      dtEff:=MAX_TRANSPORT_RANGE/wx;
+
+      if dtEff<DT_MIN then begin
+        dtEff:=DT_MIN;
+        if not(capping) then log.append('WARNING: Speed limit exceeded. Capping...').appendLineBreak;
+        capping:=true;
+      end;
+      if dtEff>dtRest
+      then dtEff:=dtRest
+      else dtEff:=dtRest/ceil(dtRest/dtEff);
+
+
+      //Lagrangian transport:
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with newState[i,j] do begin mass:=0; p:=zeroVec; end;
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
+        with value[i,j] do begin
+          v:=p*(1/(epsilon+mass));
+          if capping and (mass>=UPPER_BLACK_LEVEL) then begin //cap speed
+            //squared speed:
+            f:=(sqr(p[0])+sqr(p[1]))/(epsilon+sqr(mass));
+            if f>SPEED_CAP*SPEED_CAP then p*=SPEED_CAP/sqrt(f);
           end;
-          if dtEff>dtRest
-          then dtEff:=dtRest
-          else dtEff:=dtRest/ceil(dtRest/dtEff);
-        end;
-      end;
 
-      if capping then for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do
-        if mass<UPPER_BLACK_LEVEL then p:=zeroVec
-        else begin
-          //squared speed:
-          f:=(sqr(p[0])+sqr(p[1]))/(epsilon+sqr(mass));
-          if f>SPEED_CAP*SPEED_CAP then p*=SPEED_CAP/sqrt(f);
+          if (ANNIHILATION_FACTOR>0) and (mass>ANNIHILATION_THRESHOLD)
+          then mass-=mass*(mass-ANNIHILATION_THRESHOLD)*ANNIHILATION_FACTOR*dtEff;
+          mass+=REGROWTH_FACTOR*dtEff;
         end;
 
-      //Apply acceleration to cell flows:
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
-        aLocal[0]:=accel[i,j,0]+accel[(i+mask) and mask,j,0];
-        aLocal[1]:=accel[i,j,1]+accel[i,(j+mask) and mask,1];
-        value[i,j].p+=aLocal*(value[i,j].mass*0.5*dtEff);
-      end;
+        v +=cellCenteredAcceleration[i,j]*dtEff*0.5;
 
-      //Upwind transport
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with stateDelta[i,j] do begin mass:=0; p:=zeroVec; end;
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
-        f:=vNew[i,j,0]*dtEff/GRID_SIZE;
-        if f>0 then begin
-          transportedMass:=value[i,j].mass*f;
-          transportedFlow:=value[i,j].p   *f;
-        end else begin
-          transportedMass:=value[(i+1) and mask,j].mass*f;
-          transportedFlow:=value[(i+1) and mask,j].p   *f;
-        end;
-        stateDelta[i             ,j].mass-=transportedMass;
-        stateDelta[i             ,j].p   -=transportedFlow;
-        stateDelta[(i+1) and mask,j].mass+=transportedMass;
-        stateDelta[(i+1) and mask,j].p   +=transportedFlow;
+        f:=(DIFFUSION_BASE+DIFFUSION_BY_VELOCITY*sqrt(sqr(v[0])+sqr(v[1])))*dt;
+        if f>2 then f:=2 else if f<0 then f:=0;
 
-        f:=vNew[i,j,1]*dtEff/GRID_SIZE;
-        if f>0 then begin
-          transportedMass:=value[i,j].mass*f;
-          transportedFlow:=value[i,j].p   *f;
-        end else begin
-          transportedMass:=value[i,(j+1) and mask].mass*f;
-          transportedFlow:=value[i,(j+1) and mask].p   *f;
+        x0:=i+v[0]*dtEff; x1:=x0+1+f; x0-=f;
+        y0:=j+v[1]*dtEff; y1:=y0+1+f; y0-=f;
+
+        v +=cellCenteredAcceleration[i,j]*dtEff*0.5;
+
+        value[i,j].mass*=1/((x1-x0)*(y1-y0));
+        value[i,j].p:=v*value[i,j].mass;
+
+        for ti:=floor(x0) to floor(x1+1) do begin
+          //intersection of intervals [ti,ti+1] and [x0,x1]
+          // = [max(ti,x0),min(x1,ti+1)] -> weight =
+          wx:=min(x1,ti+1)-max(x0,ti);
+          if wx>0 then for tj:=floor(y0) to floor(y1+1) do begin
+            wy:=min(y1,tj+1)-max(y0,tj);
+            if wy>0 then with newState[ti and mask,tj and mask] do begin
+              mass+=value[i,j].mass*(wx*wy);
+              p   +=value[i,j].p   *(wx*wy);
+            end;
+          end;
         end;
-        stateDelta[i,j             ].mass-=transportedMass;
-        stateDelta[i,j             ].p   -=transportedFlow;
-        stateDelta[i,(j+1) and mask].mass+=transportedMass;
-        stateDelta[i,(j+1) and mask].p   +=transportedFlow;
       end;
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
-        value[i,j].mass+=stateDelta[i,j].mass;
-        value[i,j].p   +=stateDelta[i,j].p;
-        if (value[i,j].mass<=0) or isNan(value[i,j].mass) or isInfinite(value[i,j].mass) then begin
-          value[i,j].mass:=epsilon;
-          value[i,j].p   :=zeroVec;
-        end;
-      end;
+      value:=newState;
+
       //decrement remaining time to take
       dtRest-=dtEff;
     end;
@@ -308,11 +349,9 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
     dtRest:=dt;
     while dtRest>0 do begin
       setGravAcceleration;
-      if DRIFT_TO_CENTER then addDrift;
-      addBackgroundAcceleration(timeStepIndex,accel);
-      addShallowWaterAcceleration;
+      addBackgroundAcceleration(timeStepIndex,cellCenteredAcceleration);
+      addPressureAccelerationAndDrift;
       transport(dtRest,dtEff);
-      annihilateOrRegrow(dtEff);
       inc(subStepsTaken)
     end;
 
@@ -339,13 +378,14 @@ FUNCTION T_cellSystem.getPicture: P_rgbPicture;
 
 FUNCTION T_cellSystem.getSerialVersion: dword;
   begin
-    result:=31356+SYS_SIZE;
+    result:=31357+SYS_SIZE;
   end;
 
 FUNCTION T_cellSystem.loadFromStream(VAR stream: T_bufferedInputStreamWrapper): boolean;
   begin
     if not(inherited) then exit(false);
     stream.read(value,sizeOf(value));
+    numberOfFrames:=stream.readWord;
     result:=stream.allOkay;
   end;
 
@@ -353,6 +393,7 @@ PROCEDURE T_cellSystem.saveToStream(VAR stream: T_bufferedOutputStreamWrapper);
   begin
     inherited;
     stream.write(value,sizeOf(value));
+    stream.writeWord(numberOfFrames);
   end;
 
 end.

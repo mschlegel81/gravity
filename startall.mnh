@@ -31,9 +31,14 @@ tPrint(...)->begin
 end;
 
 tPrintD(...)->begin
-  local out:=join([formatTime("hh:mm.ss",systime),' ']|...);
-  out&=repeat(' ',toClear-(toClear:=out.length));
-  printDirect("\r",out);
+  local lastPrinted:=void;
+save;
+  lastPrinted==... ? void : begin
+    local out:=join([formatTime("hh:mm.ss",systime),' ']|...);
+    out&=repeat(' ',toClear-(toClear:=out.length));
+    printDirect("\r",out);
+    lastPrinted:=...;
+  end;
 end;
 
 BLOCKS:=[0..100].map((l)->[" ","▁","▂","▃","▄","▅","▆","▇","█"][floor(l*9/101)])|'!';
@@ -43,7 +48,6 @@ FORCE:='force';
 QUIT:='quit';
 
 exeSorting(L:StringCollection)->L.map((n)->n.extractFileNameOnly.clean(['0'..'9'],'').softCast=>n).sort(1).sort(0).getInner(1);
-
 
 start(replay:Boolean)->begin
   assertUniqueInstance;
@@ -56,6 +60,7 @@ start(replay:Boolean)->begin
     firstQuestion:=false;
   end)});
 
+  local lastStartedAt:=scriptTime;
   local startedCount:=0;
   gravExes
   .exeSorting
@@ -64,7 +69,7 @@ start(replay:Boolean)->begin
                  : begin
                      userSignal:=userSignal==QUIT ? QUIT : '';
                      local load:=getCpuLoadHistory(32);
-                     while((load.size<16 OR max(load-[load.size-1..0])>=CPU_threshold) AND (userSignal==''),begin
+                     while(((load.size<16 OR max(load-[load.size-1..0])>=CPU_threshold) OR (scriptTime<lastStartedAt+1)) AND (userSignal=='') ,begin
                        tPrintD('Next:     ',execName.relativeFileName,"; CPU: ",BLOCKS[load].join,load.trailing,'%');
                        load:=getCpuLoadHistory(32);
                        sleep(0.1);
@@ -76,6 +81,7 @@ start(replay:Boolean)->begin
                          ? tPrint('Forced:   ',execName.relativeFileName)
                          : tPrint('Starting: ',execName.relativeFileName);
                          execute(execName,replay);
+                         lastStartedAt:=scriptTime;
                          startedCount+=1;
                          while(execName not in (alreadyRunning:=runningGravTasks),sleep(0.1));
                        end;
@@ -116,14 +122,24 @@ main('list')->begin
 end;
 
 watcher(filename:String)->{begin
-  local it:=fileLineIterator(filename,600);
+  local timedOut:=true;
   local trailSize:=100;
   local trail:=[];
-  localAsync({begin
-    local n:=void;
-    while(!isVoid(n:=it()),trail:=trailing(trail|("\t"&n),trailSize));
-  end});
+  local reinitialize:=()->begin
+    timedOut:=false;
+    trail:=[];
+    localAsync({begin
+      local it:=fileLineIterator(filename,60);
+      local n:=void;
+      while(!isVoid(n:=it()),begin
+        trail:=trailing(trail|("\t"&n),trailSize);
+      end);
+      trail|=("\t"&'...timed out');
+      timedOut:=true;
+    end});
+  end;
 save;
+  timedOut ? reinitialize() : void;
   trailSize:=max(1,$trailSize);
   trail.size>trailSize
   ? trail.trailing(trailSize)

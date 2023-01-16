@@ -40,6 +40,8 @@ main->rebuild(false,'.');
 main('missing')->rebuild(true,'.');
 //*Build all matching a given prefix (regex)
 main(prefix)->rebuild(false,'^./'&prefix);
+//*Build all missing matching a given prefix (regex)
+main('missing',prefix)->rebuild(true,'^./'&prefix);
 
 @after
 after->print('Rebuild done');

@@ -40,51 +40,72 @@ VAR queue:T_animation;
 FUNCTION calcThread(p:pointer):ptrint;
   VAR queue:P_animation;
       sys:T_cellSystem;
-      picture: P_rgbPicture;
+      prevPic: P_rgbPicture=nil;
+      newPic : P_rgbPicture;
       animStream: TFileStream;
-      replaying: boolean;
 
   PROCEDURE addPicture(CONST writeAnimStream:boolean);
     begin
       if writeAnimStream then begin
-        picture^.write(animStream);
-        sys.saveToFile(fileName_dump);
+        newPic^.write(animStream,prevPic);
       end else begin
-        log.append('Replay; mass=').append(picture^.mass,6).appendLineBreak;
+        log.append('Replay (')
+           .append(calcFrameCount)
+           .append('); mass=')
+           .append(newPic^.mass,6)
+           .appendLineBreak;
       end;
-      queue^.addFrame(picture);
+      if prevPic<>nil then queue^.addFrame(prevPic);
+      prevPic:=newPic;
       inc(calcFrameCount);
+    end;
+
+  PROCEDURE replay;
+    VAR replaying: Boolean;
+    begin
+      animStream:=TFileStream.create(fileName_anim,fmOpenReadWrite or fmShareDenyWrite);
+      animStream.Seek(0,soBeginning);
+      repeat
+        new(newPic,create);
+        replaying:=newPic^.load(animStream,prevPic);
+        addPicture(false);
+      until not(replaying) or (calcFrameCount>=sys.numberOfFrames);
+      if calcFrameCount<sys.numberOfFrames then begin
+        log.append('ERROR ON RESTORE: Expected to read ')
+           .append(sys.numberOfFrames)
+           .append(' frames but read only ')
+           .append(calcFrameCount)
+           .appendLineBreak;
+        animStream.Seek(0,soBeginning);
+        sys.destroy;
+        sys.create;
+        while queue^.dropFrame>0 do;
+        prevPic:=nil;
+        newPic:=sys.getPicture;
+        addPicture(true);
+      end;
     end;
 
   begin
     randomize;
     queue:=P_animation(p);
     sys.create;
-    if fileExists(fileName_dump) and fileExists(fileName_anim) and not(hasRestartFlag) then begin
-      if not(sys.loadFromFile(fileName_dump)) then begin
-        halt(1);
-      end;
-      animStream:=TFileStream.create(fileName_anim,fmOpenReadWrite or fmShareDenyWrite);
-      animStream.Seek(0,soBeginning);
-      repeat
-        new(picture,create);
-        replaying:=picture^.load(animStream);
-        if replaying
-        then addPicture(false)
-        else dispose(picture,destroy);
-      until not(replaying) or closing;
-    end else begin
+    if fileExists(fileName_dump) and fileExists(fileName_anim) and not(hasRestartFlag) and sys.loadFromFile(fileName_dump)
+    then replay
+    else begin
       animStream:=TFileStream.create(fileName_anim,fmCreate or fmShareDenyWrite);
       animStream.Seek(0,soBeginning);
-      picture:=sys.getPicture;
-      addPicture(true);
+      newPic:=sys.getPicture;
+      addPicture(true); //frame #0
     end;
     while not(closing) and (calcFrameCount<5000) and not(hasReplayFlag) do begin
       sys.doMacroTimeStep(calcFrameCount);
-      picture:=sys.getPicture;
+      newPic:=sys.getPicture;
       addPicture(true);
     end;
-    //close(handle);
+    sys.numberOfFrames:=calcFrameCount;
+    sys.saveToFile(fileName_dump);
+    queue^.addFrame(newPic);
     animStream.destroy;
     sys.destroy;
     result:=0;
@@ -117,9 +138,7 @@ PROCEDURE TGravMainForm.IdleTimer1Timer(Sender: TObject);
     if replaying then begin
       queue.render(Image1);
       framesCached:=queue.dropFrame;
-      if (framesCached=0) then begin
-                                replaying:=false;
-      end;
+      if (framesCached=0) then replaying:=false;
     end else framesCached:=queue.getFrameCount;
     caption:=appTitle+' @'+intToStr(calcFrameCount-framesCached)+' ('+intToStr(framesCached)+' frames ahead)'+BoolToStr(closing,' -- CLOSING','')+BoolToStr(replaying,'',' -- PAUSED');
     if closing and not(threadRunning) then close;

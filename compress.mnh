@@ -38,6 +38,7 @@ compressSet(s)->workAllowed AND s not in alreadyExamined AND begin
   alreadyExamined|=s;
   local set:=files(['.anim','.exe','.dump'].map((e)->s.changeFileExt(e))).sort;
   local targetMnh:=s.changeFileExt('.mnh');
+  fileExists(targetMnh) AND (set.size==3) ? execPipeless(executor,[targetMnh,'check']) : void;
   local targetZip:=s.changeFileExt('.dat');
   set.size==3                                               ? void : return log('Set ',s,' is incomplete') orElse false;
   (!fileExists(targetZip) OR !fileExists(targetMnh))        ? void : return log('Set ',s,' is already compressed') orElse false;
@@ -68,16 +69,7 @@ compressSet(s)->workAllowed AND s not in alreadyExamined AND begin
   end : false;
 end;
 
-main(firstPattern,...)->begin
-  assertUniqueInstance;
-  files(firstPattern|...)
-    .flatten
-    .map((f)->f.expandedFileName.changeFileExt(''))
-    .unique
-    .pEach(f,compressSet(f));
-  log('Finished');
-end;
-
+//*Compress all files with a complete set of frames
 main->begin
   assertUniqueInstance;
   while(allFiles('.','*.anim').fileInfo.map((f)->begin
@@ -87,5 +79,29 @@ main->begin
           ? f['path'].changeFileExt('')
           : void;
         end).unique.pEach(f,compressSet(f),OR));
+  log('Finished');
+end;
+
+//*Compress all files
+main('all')->begin
+  assertUniqueInstance;
+  while(allFiles('.','*.anim').fileInfo.map((f)->begin
+          //Filter by anim file...
+          local resolution:=f['path'].extractFileNameOnly.clean(['0'..'9'],'').softCast;
+          resolution in [32,64,128,256]
+          ? f['path'].changeFileExt('')
+          : void;
+        end).unique.pEach(f,compressSet(f),OR));
+  log('Finished');
+end;
+
+//*Compress all files matching the pattern
+main(firstPattern,...)->begin
+  assertUniqueInstance;
+  files(firstPattern|...)
+    .flatten
+    .map((f)->f.expandedFileName.changeFileExt(''))
+    .unique
+    .pEach(f,compressSet(f));
   log('Finished');
 end;

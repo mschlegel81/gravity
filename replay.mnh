@@ -61,17 +61,21 @@ replay(filename,scaledUp,export:Boolean)->fileExists(filename) AND workAllowed ?
   assert(res in [32,64,128,256]);
 //  local hiRes:=res*4;
   local chunkSize:=res*res*2;
+  local prev:=0;
+  local I1:=(local I0:=[0..res*res-1]*2)+1;
 
   byteStreamIterator(filename,chunkSize+8,export ? void : 60)
     .map((line)->[filename.changeFileExt(format('_%4.4d.png',index+=1)),begin bytesRead+=line.size; line; end])
     .filter((D)->!(export AND fileExists(D[0])))
-    //.{scaledUp
-    //  ? $filtered.map((D)->[D[0],[chunkMap(D[1].head(chunkSize)        ,3).toList.scaleTo(res,hiRes),hiRes]])
-    //  : $filtered.map((D)->[D[0],[chunkMap(D[1].head(chunkSize)*(1/255),3).toList                   ,res  ]])}
-    .map((D)->[D[0],note(chunkMap(D[1].head(chunkSize),2,(Bytes)->Bytes[0]+Bytes[1]*256).toList),
+    .map((D)->begin
+       local n:=D[1].head(chunkSize);
+       n:=n[I0]+n[I1]*256;
+       n:=prev+n-65536*ord((n and 32768)>0);
+       [D[0],[RealColors.getAll(prev:=n),res]];
+     end)
 
-
-    [RealColors.getAll(chunkMap(D[1].head(chunkSize),2,(Bytes)->Bytes[0]+Bytes[1]*256).toList),res  ]])
+//    .map((D)->[D[0],
+//    [RealColors.getAll(chunkMap(D[1].head(chunkSize),2,(Bytes)->Bytes[0]+Bytes[1]*256).toList),res  ]])
   .agg((d)->begin      //agg	@[MNH]:3,1	1	43059.349ms	4564.750ms
     setOptions(["axisStyleX"=>0,"axisStyleY"=>0].toMap);
     plot();
@@ -94,6 +98,21 @@ replay(filename,scaledUp,export:Boolean)->fileExists(filename) AND workAllowed ?
   callMemoryCleaner;
   doLog(' - EOF');
 end : void;
+
+begin
+  local I0:=[0..32*32-1]*2;
+  local I1:=[0..32*32-1]*2+1;
+  local prev:=0;
+  byteStreamIterator('./0_high_density/grav032.anim',32*32*2+8)
+    .map((l)->['',l])
+    .map((D)->begin
+       local n:=D[1].head(32*32*2);
+       n:=n[I0]+n[I1]*256;
+       n:=prev+n-65536*ord((n and 32768)>0);
+       [D[0],prev:=n];
+     end)
+   .toList;
+end;
 
 memoized replayableFiles->
   allFiles('.','grav*.anim').map((l)->begin

@@ -5,6 +5,7 @@ UNIT basicGraphics;
 INTERFACE
 USES ExtCtrls,Classes,myGenerics;
 CONST UPPER_BLACK_LEVEL=0.0000029263403116397158;
+      UPPER_C1_LEVEL   =0.00002633706280475744;
 TYPE
   T_rgbColor=array[0..2] of byte;
   P_rgbPicture=^T_rgbPicture;
@@ -12,7 +13,7 @@ TYPE
   T_rgbPicture=object
     private
       followedBy:P_rgbPicture;
-      Pixels:PWord;
+      Pixels:PSmallInt;
     public
       mass:double;
       PROCEDURE setPixel(CONST x,y:longint; CONST m:double);
@@ -22,8 +23,8 @@ TYPE
 
       PROCEDURE copyToImage(VAR destImage:TImage);
 
-      FUNCTION load(fileStream:TFileStream):boolean;
-      PROCEDURE write(fileStream:TFileStream);
+      FUNCTION load(fileStream:TFileStream; CONST previous:P_rgbPicture):boolean;
+      PROCEDURE write(fileStream:TFileStream; CONST previous:P_rgbPicture);
   end;
 
   P_animation=^T_animation;
@@ -112,12 +113,12 @@ PROCEDURE T_rgbPicture.setPixel(CONST x,y:longint; CONST m:double);
 CONSTRUCTOR T_rgbPicture.create;
   begin
     followedBy:=nil;
-    getMem(Pixels,sizeOf(word)*SYS_SIZE*SYS_SIZE);
+    getMem(Pixels,sizeOf(SmallInt)*SYS_SIZE*SYS_SIZE);
   end;
 
 DESTRUCTOR T_rgbPicture.destroy;
   begin
-    freeMem(Pixels,sizeOf(word)*SYS_SIZE*SYS_SIZE);
+    freeMem(Pixels,sizeOf(SmallInt)*SYS_SIZE*SYS_SIZE);
   end;
 
 PROCEDURE T_rgbPicture.copyToImage(VAR destImage: TImage);
@@ -192,7 +193,7 @@ PROCEDURE T_rgbPicture.copyToImage(VAR destImage: TImage);
       ImgFormatDescription: TRawImageDescription;
       y,x:longint;
       pix:PByte;
-      src:PWord;
+      src:PSmallInt;
 
       colLine:array[0..SYS_SIZE-1] of T_rgbColor;
 
@@ -218,13 +219,14 @@ PROCEDURE T_rgbPicture.copyToImage(VAR destImage: TImage);
     end;
   end;
 
-FUNCTION T_rgbPicture.load(fileStream: TFileStream): boolean;
+FUNCTION T_rgbPicture.load(fileStream: TFileStream; CONST previous:P_rgbPicture): boolean;
   VAR expected,read,p:longint;
-
+      i:longint;
   begin
     p:=fileStream.position;
-    expected:=sizeOf(word)*SYS_SIZE*SYS_SIZE;
+    expected:=sizeOf(SmallInt)*SYS_SIZE*SYS_SIZE;
     read:=fileStream.read(Pixels^,expected);
+    if previous<>nil then for i:=0 to SYS_SIZE*SYS_SIZE-1 do Pixels[i]+=previous^.Pixels[i];
     if expected=read then begin p+=read; fileStream.Seek(p,soBeginning); end else exit(false);
 
     expected:=sizeOf(mass);
@@ -232,9 +234,15 @@ FUNCTION T_rgbPicture.load(fileStream: TFileStream): boolean;
     if expected=read then begin p+=read; fileStream.Seek(p,soBeginning); result:=true; end else exit(false);
   end;
 
-PROCEDURE T_rgbPicture.write(fileStream: TFileStream);
+PROCEDURE T_rgbPicture.write(fileStream: TFileStream; CONST previous:P_rgbPicture);
+  var i: longint;
+      dataToWrite:array[0..SYS_SIZE*SYS_SIZE-1] of SmallInt;
   begin
-    fileStream.write(Pixels^,sizeOf(word)*SYS_SIZE*SYS_SIZE);
+    if previous=nil then fileStream.write(Pixels^,sizeOf(SmallInt)*SYS_SIZE*SYS_SIZE)
+    else begin
+      for i:=0 to SYS_SIZE*SYS_SIZE-1 do dataToWrite[i]:=pixels[i]-previous^.Pixels[i];
+      fileStream.write(dataToWrite,sizeOf(SmallInt)*SYS_SIZE*SYS_SIZE)
+    end;
     fileStream.write(mass,sizeOf(mass));
   end;
 

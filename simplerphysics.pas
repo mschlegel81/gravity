@@ -259,7 +259,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
     VAR i,j,ti,tj:longint;
         x0,x1,y0,y1,
         wx,wy:double;
-        v:T_2dVector;
+        v,halfDv:T_2dVector;
         f:double;
     begin
       dtEff:=dtRest;
@@ -291,7 +291,9 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with newState[i,j] do begin mass:=0; p:=zeroVec; end;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
         with value[i,j] do begin
-          v:=p*(1/(epsilon+mass));
+          if mass>UPPER_C1_LEVEL
+          then v:=p*(1/mass)
+          else v:=p*(1/(epsilon+mass));
           if capping and (mass>=UPPER_BLACK_LEVEL) then begin //cap speed
             //squared speed:
             f:=(sqr(p[0])+sqr(p[1]))/(epsilon+sqr(mass));
@@ -299,19 +301,25 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
           end;
 
           if (ANNIHILATION_FACTOR>0) and (mass>ANNIHILATION_THRESHOLD)
-          then mass-=mass*(mass-ANNIHILATION_THRESHOLD)*ANNIHILATION_FACTOR*dtEff;
-          mass+=REGROWTH_FACTOR*dtEff;
+          then begin
+            wx:=REGROWTH_FACTOR-mass*(mass-ANNIHILATION_THRESHOLD)*ANNIHILATION_FACTOR;
+            wy:=ANNIHILATION_FACTOR*(ANNIHILATION_THRESHOLD-2*mass);
+            mass+=dtEff*wx*(1+dtEff*wy*0.5);
+          end else
+            mass+=REGROWTH_FACTOR*dtEff;
+
+          //if (ANNIHILATION_FACTOR>0) and (mass>ANNIHILATION_THRESHOLD)
+          //then mass-=mass*(mass-ANNIHILATION_THRESHOLD)*ANNIHILATION_FACTOR*dtEff;
+          //mass+=REGROWTH_FACTOR*dtEff;
         end;
 
-        v +=cellCenteredAcceleration[i,j]*dtEff*0.5;
-
+        halfDv:=cellCenteredAcceleration[i,j]*dtEff*0.5;
+        v +=halfDv;
         f:=(DIFFUSION_BASE+DIFFUSION_BY_VELOCITY*sqrt(sqr(v[0])+sqr(v[1])))*dt;
         if f>2 then f:=2 else if f<0 then f:=0;
-
         x0:=i+v[0]*dtEff; x1:=x0+1+f; x0-=f;
         y0:=j+v[1]*dtEff; y1:=y0+1+f; y0-=f;
-
-        v +=cellCenteredAcceleration[i,j]*dtEff*0.5;
+        v +=halfDv;
 
         value[i,j].mass*=1/((x1-x0)*(y1-y0));
         value[i,j].p:=v*value[i,j].mass;

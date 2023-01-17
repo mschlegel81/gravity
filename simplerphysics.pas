@@ -8,6 +8,7 @@ TYPE
   T_cellSystem=object(T_serializable)
     private
       value:T_systemState;
+      prevAccelTime:TmyFloat;
     public
       numberOfFrames:longint;
       CONSTRUCTOR create;
@@ -85,8 +86,11 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
 
 { T_cellSystem }
 CONSTRUCTOR T_cellSystem.create;
+  VAR i,j:longint;
   begin
     value:=getInitialState;
+    prevAccelTime:=-1E50;
+    for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do value[i,j].a:=zeroVec;
   end;
 
 DESTRUCTOR T_cellSystem.destroy;
@@ -95,8 +99,8 @@ DESTRUCTOR T_cellSystem.destroy;
 
 FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
   VAR newState:T_systemState;
-      cellCenteredAcceleration:T_vectorField;
-      masses:array[0..SYS_SIZE-1,0..SYS_SIZE-1] of TmyFloat;
+      acceleration:T_vectorField;
+      masses:array[0..SYS_SIZE-1,0..SYS_SIZE-1] of single;
 
   PROCEDURE setGravAcceleration;
     VAR i,j,oi,oj:longint;
@@ -107,7 +111,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
           a:=zeroVec;
           for oi in box[i] do for oj in box[j] do
             a+=cachedAttraction[oi-i,oj-j]*value[oi,oj].mass;
-          cellCenteredAcceleration[i,j]:=a;
+          acceleration[i,j]:=a;
         end;
       end else begin
         for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do masses[i,j]:=value[i,j].mass;
@@ -116,7 +120,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
           for oi:=0 to SYS_SIZE-1 do for oj:=0 to SYS_SIZE-1 do
             //a+=cachedAttraction[oi-i,oj-j]*value[oi,oj].mass;
             a+=cachedAttraction[oi-i,oj-j]*masses[oi,oj];
-          cellCenteredAcceleration[i,j]:=a;
+          acceleration[i,j]:=a;
         end;
       end;
     end;
@@ -171,7 +175,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
       else deltaV:=        pTot*(-      1/mTot);
 
       if (REPULSION_LINEAR=0) AND (REPULSION_QUADRATIC=0)
-      then for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do cellCenteredAcceleration[i,j]+=deltaV
+      then for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do acceleration[i,j]+=deltaV
       else begin
         for i:=0 to SYS_SIZE-1 do begin
           i_[-2]:=(i+mask+mask) and mask;
@@ -243,57 +247,65 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
             end;
             a:=deltaV;
             for ip:=-2 to 2 do for jp:=-2 to 2 do a+=WEIGHT[ip,jp]*local[ip,jp];
-            cellCenteredAcceleration[i,j]+=a;
+            acceleration[i,j]+=a;
           end;
         end;
       end;
     end;
 
+  CONST DT_MIN=dt/200; //not more than 200 sub steps
+        MAX_TRANSPORT_RANGE =10*dt;
+        SPEED_CAP=0.1*MAX_TRANSPORT_RANGE/DT_MIN;
   VAR capping:boolean=false;
-  PROCEDURE transport(VAR dtRest:TmyFloat; OUT dtEff:TmyFloat);
+      dtRest,simTime:TmyFloat;
+  FUNCTION calcTimeStep:TmyFloat;
+    VAR i,j:longint;
+        vMax,v:double;
+    begin
+      result:=dtRest;
+      // |result * dt| <= MAX_TRANSPORT_RANGE
+
+      //Step size control...
+      vMax:=epsilon;
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do if mass>UPPER_C1_LEVEL then begin
+        v:=(p[0]*p[0]+p[1]*p[1])/(mass*mass);
+        if v>vMax then vMax:=v;
+      end;
+      vMax:=sqrt(vMax);  //vMax= vMax
+      result:=MAX_TRANSPORT_RANGE/vMax;
+
+      if result<DT_MIN then begin
+        result:=DT_MIN;
+        if not(capping) then log.append('WARNING: Speed limit exceeded. Capping...').appendLineBreak;
+        capping:=true;
+      end;
+      if result>dtRest
+      then result:=dtRest
+      else result:=dtRest/ceil(dtRest/result);
+    end;
+
+  PROCEDURE transport(CONST dtEff:TmyFloat);
     CONST mask=SYS_SIZE-1;
-          DT_MIN=dt/200; //not more than 200 sub steps
-          MAX_TRANSPORT_RANGE =5*dt;
-          SPEED_CAP=0.1*MAX_TRANSPORT_RANGE/DT_MIN;
 
     VAR i,j,ti,tj:longint;
         x0,x1,y0,y1,
         wx,wy:double;
-        v,halfDv:T_2dVector;
-        f:double;
+        v,step,jerk:T_2dVector;
+        f,jerkFactor:double;
     begin
-      dtEff:=dtRest;
-      // |dtEff * v| <= MAX_TRANSPORT_RANGE
-      // |dtEff * (dv/dx)| <= MAX_DIVERGENCE_RANGE
-      // (dv/dx) =
-      // abs(ax[i-1/2]-ax[i+1/2])*dtEff*dtEff <= MAX_DIVERGENCE_RANGE
-
-      //Step size control...
-      wx:=epsilon;
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do if mass>UPPER_C1_LEVEL then begin
-        f:=(p[0]*p[0]+p[1]*p[1])/(mass*mass);
-        if f>wx then wx:=f;
-      end;
-      wx:=sqrt(wx);  //wx= vMax
-      dtEff:=MAX_TRANSPORT_RANGE/wx;
-
-      if dtEff<DT_MIN then begin
-        dtEff:=DT_MIN;
-        if not(capping) then log.append('WARNING: Speed limit exceeded. Capping...').appendLineBreak;
-        capping:=true;
-      end;
-      if dtEff>dtRest
-      then dtEff:=dtRest
-      else dtEff:=dtRest/ceil(dtRest/dtEff);
-
-
+      jerkFactor:=1/(simTime-prevAccelTime);
       //Lagrangian transport:
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with newState[i,j] do begin mass:=0; p:=zeroVec; end;
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with newState[i,j] do begin mass:=0; p:=zeroVec; a:=zeroVec; end;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
         with value[i,j] do begin
           if mass>UPPER_C1_LEVEL
-          then v:=p*(1/mass)
-          else v:=p*(1/(epsilon+mass));
+          then begin
+            v:=p*(1/mass);
+            a*=   1/mass;
+          end else begin
+            v:=p*(1/(epsilon+mass));
+            a*=   1/(epsilon+mass);
+          end;
           if capping and (mass>=UPPER_BLACK_LEVEL) then begin //cap speed
             //squared speed:
             f:=(sqr(p[0])+sqr(p[1]))/(epsilon+sqr(mass));
@@ -307,22 +319,21 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
             mass+=dtEff*wx*(1+dtEff*wy*0.5);
           end else
             mass+=REGROWTH_FACTOR*dtEff;
-
-          //if (ANNIHILATION_FACTOR>0) and (mass>ANNIHILATION_THRESHOLD)
-          //then mass-=mass*(mass-ANNIHILATION_THRESHOLD)*ANNIHILATION_FACTOR*dtEff;
-          //mass+=REGROWTH_FACTOR*dtEff;
         end;
 
-        halfDv:=cellCenteredAcceleration[i,j]*dtEff*0.5;
-        v +=halfDv;
+        jerk:=(acceleration[i,j]-value[i,j].a)*jerkFactor;
+
+        step:=(v+(acceleration[i,j]+jerk*(dtEff/3))*(dtEff/2))*dtEff;
+        v   +=(   acceleration[i,j]+jerk*(dtEff/2)           )*dtEff;
+
         f:=(DIFFUSION_BASE+DIFFUSION_BY_VELOCITY*sqrt(sqr(v[0])+sqr(v[1])))*dt;
         if f>2 then f:=2 else if f<0 then f:=0;
-        x0:=i+v[0]*dtEff; x1:=x0+1+f; x0-=f;
-        y0:=j+v[1]*dtEff; y1:=y0+1+f; y0-=f;
-        v +=halfDv;
+        x0:=i+step[0]; x1:=x0+1+f; x0-=f;
+        y0:=j+step[1]; y1:=y0+1+f; y0-=f;
 
         value[i,j].mass*=1/((x1-x0)*(y1-y0));
         value[i,j].p:=v*value[i,j].mass;
+        value[i,j].a:=acceleration[i,j]*value[i,j].mass;
 
         for ti:=floor(x0) to floor(x1+1) do begin
           //intersection of intervals [ti,ti+1] and [x0,x1]
@@ -333,18 +344,16 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
             if wy>0 then with newState[ti and mask,tj and mask] do begin
               mass+=value[i,j].mass*(wx*wy);
               p   +=value[i,j].p   *(wx*wy);
+              a   +=value[i,j].a   *(wx*wy);
             end;
           end;
         end;
       end;
       value:=newState;
-
-      //decrement remaining time to take
-      dtRest-=dtEff;
     end;
 
   VAR subStepsTaken:longint=0;
-      dtRest, dtEff:TmyFloat;
+      dtEff:TmyFloat;
       i,j:longint;
       m:double=0;
       start:double;
@@ -356,10 +365,16 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
 
     dtRest:=dt;
     while dtRest>0 do begin
+      simTime:=(timeStepIndex+1)*dt-dtRest;
       setGravAcceleration;
-      addBackgroundAcceleration(timeStepIndex,cellCenteredAcceleration);
+      addBackgroundAcceleration(timeStepIndex,acceleration);
       addPressureAccelerationAndDrift;
-      transport(dtRest,dtEff);
+      dtEff:=calcTimeStep;
+      transport(dtEff);
+
+      prevAccelTime:=simTime;
+
+      dtRest-=dtEff;
       inc(subStepsTaken)
     end;
 
@@ -386,7 +401,7 @@ FUNCTION T_cellSystem.getPicture: P_rgbPicture;
 
 FUNCTION T_cellSystem.getSerialVersion: dword;
   begin
-    result:=31357+SYS_SIZE;
+    result:=31358+SYS_SIZE;
   end;
 
 FUNCTION T_cellSystem.loadFromStream(VAR stream: T_bufferedInputStreamWrapper): boolean;
@@ -394,6 +409,7 @@ FUNCTION T_cellSystem.loadFromStream(VAR stream: T_bufferedInputStreamWrapper): 
     if not(inherited) then exit(false);
     stream.read(value,sizeOf(value));
     numberOfFrames:=stream.readWord;
+    prevAccelTime:=stream.readDouble;
     result:=stream.allOkay;
   end;
 
@@ -402,6 +418,7 @@ PROCEDURE T_cellSystem.saveToStream(VAR stream: T_bufferedOutputStreamWrapper);
     inherited;
     stream.write(value,sizeOf(value));
     stream.writeWord(numberOfFrames);
+    stream.writeDouble(prevAccelTime);
   end;
 
 end.

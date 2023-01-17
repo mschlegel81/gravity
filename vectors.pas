@@ -6,7 +6,7 @@ INTERFACE
 TYPE
   TmyFloat=double;
   T_2dVector=array[0..1] of TmyFloat;
-  T_systemState=array[0..SYS_SIZE-1,0..SYS_SIZE-1] of record mass:TmyFloat; p:T_2dVector; end;
+  T_systemState=array[0..SYS_SIZE-1,0..SYS_SIZE-1] of record mass:TmyFloat; p,a:T_2dVector; end;
   T_vectorField=array[0..SYS_SIZE-1,0..SYS_SIZE-1] of T_2dVector;
 CONST
   epsilon=1E-10;

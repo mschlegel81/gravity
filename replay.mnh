@@ -1,34 +1,26 @@
 USE colorTable;
 
-//private scaleTo(colors:List,width,targetWidth)->begin
-//  local height      :=colors.size div width;
-//  local targetHeight:=round(height*(targetWidth/width));
-////  local xMapping:=([0.. width-1]+0.5)*(targetWidth /width ); local newXValues:=0.5+[0..targetWidth -1];
-////  local yMapping:=([0..height-1]+0.5)*(targetHeight/height); local newYValues:=0.5+[0..targetHeight-1];
-////
-////  local colorIndexes:=colors
-////    .map(::colorIndex)
-////    .chunkMap(width)
-////    .map((row)->newBSpline([xMapping,row].transpose)(newXValues))
-////    .toList.transpose
-////    .map((column)->newBSpline([yMapping,column].transpose)(newYValues))
-////    .transpose.flatten.round;
-//  local newXValues:=(0.5+[0..targetWidth -1])*width /targetWidth +0.5;
-//  local newYValues:=(0.5+[0..targetHeight-1])*height/targetHeight+0.5;
-//
-//  local colorIndexes:=colors
-//    .map(::colorIndex)
-//    .chunkMap(width)
-//    .map((row)->newLocalInterpolator(row)(newXValues))
-//    .toList.transpose
-//    .map((column)->newLocalInterpolator(column)(newYValues))
-//    .transpose.flatten.round;
-//
-//  colorIndexes:=colorIndexes * ord(0<=colorIndexes< allColors.size)
-//                             + ord(   colorIndexes>=allColors.size)*(allColors.size-1);
-//  realColors[colorIndexes];
-//end;
+private scaleTo(colorIndexes:IntList,width,targetWidth)->begin
+  local height      :=colorIndexes.size div width;
+  local targetHeight:=round(height*(targetWidth/width));
 
+  local newXValues:=(0.5+[0..targetWidth -1])*width /targetWidth +0.5;
+  local newYValues:=(0.5+[0..targetHeight-1])*height/targetHeight+0.5;
+
+  local finerIndexes:=colorIndexes
+    .chunkMap(width)
+    .map((row)->newBSpline(row)(newXValues))
+    .toList
+    .transpose
+    .map((column)->newBSpline(column)(newYValues))
+    .transpose
+    .flatten
+    .{vectorIfThenElse($L<0,0,round($L))};
+
+  RealColors[vectorIfThenElse(finerIndexes<RealColors.size,
+                              finerIndexes,
+                              RealColors.size-1)];
+end;
 
 mutable workAllowed:=true;
 ensureCancelTask->begin
@@ -59,24 +51,24 @@ replay(filename,scaledUp,export:Boolean)->fileExists(filename) AND workAllowed ?
   local index:=-1;
   local res:=filename.extractFileNameOnly.clean(['0'..'9'],'').softCast;
   assert(res in [32,64,128,256]);
-//  local hiRes:=res*4;
+  local hiRes:=export ? 1080 : max(plotImageSize.min,res*2);
   local chunkSize:=res*res*2;
   local prev:=0;
   local I1:=(local I0:=[0..res*res-1]*2)+1;
 
   byteStreamIterator(filename,chunkSize+8,export ? void : 60)
     .map((line)->[filename.changeFileExt(format('_%4.4d.png',index+=1)),begin bytesRead+=line.size; line; end])
-    .filter((D)->!(export AND fileExists(D[0])))
     .map((D)->begin
        local n:=D[1].head(chunkSize);
        n:=n[I0]+n[I1]*256;
        n:=prev+n-65536*ord((n and 32768)>0);
-       [D[0],[RealColors.getAll(prev:=n),res]];
+       [D[0],prev:=n];
      end)
-
-//    .map((D)->[D[0],
-//    [RealColors.getAll(chunkMap(D[1].head(chunkSize),2,(Bytes)->Bytes[0]+Bytes[1]*256).toList),res  ]])
-  .agg((d)->begin      //agg	@[MNH]:3,1	1	43059.349ms	4564.750ms
+    .filter((D)->!(export AND fileExists(D[0])))
+    .{scaledUp
+     ? $stream.map((D)->[D[0],[scaleTo(D[1],res,hiRes),hiRes]])
+     : $stream.map((D)->[D[0],[RealColors[D[1]]       ,res  ]])}
+  .agg((d)->begin
     setOptions(["axisStyleX"=>0,"axisStyleY"=>0].toMap);
     plot();
     plotRasterImage@(d[1]);

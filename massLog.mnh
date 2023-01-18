@@ -1,0 +1,19 @@
+//allFiles('C:\dev\private\grav_pas','*.log');
+
+massLog(filename)->begin
+  print('Showing log: ',filename);
+  assertGuiStarted;
+  setOptions(["x0"=>-1,"x1"=>1,"y0"=>1E-100,"y1"=>1,"fontsize"=>10,"preserveAspect"=>false,"autoscaleX"=>true,"autoscaleY"=>true,"logscaleX"=>false,"logscaleY"=>true,"autoscaleFactor"=>1,"axisStyleX"=>7,"axisStyleY"=>7].toMap);
+  filename.fileLineIterator
+  .each(line,[index,line.split('mass=').trailing.softCast])
+  .filter((e)->e[1].isNumeric)
+  .addPlot;
+end;
+
+main('list')->printf('%s',relativeFileName('.',allFiles('.','*.log')));
+main(...)->begin
+  assertGuiStarted;
+  files(...).filter((f)->f.extractFileExt='.log').agg(::massLog);
+end;
+
+

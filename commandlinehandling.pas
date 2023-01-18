@@ -9,6 +9,7 @@ FUNCTION hasRestartFlag:boolean;
 FUNCTION hasReplayFlag:boolean;
 FUNCTION hasCloseFlag:boolean;
 FUNCTION initialDensityVariant:T_initialDensityEnum;
+FUNCTION hasPositionParameter(OUT index:longint):boolean;
 
 FUNCTION fileName_anim:string;
 FUNCTION fileName_dump:string;
@@ -55,6 +56,19 @@ FUNCTION initialDensityVariant: T_initialDensityEnum;
     if      hasCmdLineParameter(PARAM_LOW_DENSITY)  then result:=id_low
     else if hasCmdLineParameter(PARAM_HIGH_DENSITY) then result:=id_high
     else                                                 result:=id_ultraHigh;;
+  end;
+
+FUNCTION hasPositionParameter(OUT index:longint):boolean;
+  VAR rest:String;
+      i: Integer;
+  begin
+    result:=false;
+    for i:=1 to ParamCount do if copy(paramstr(i),1,4)='pos=' then begin
+      rest:=copy(ParamStr(i),5,length(paramstr(i)));
+      index:=StrToIntDef(rest,-1);
+      result:=index>=0;
+      if result then exit(result);
+    end;
   end;
 
 FUNCTION fileName_anim:string;

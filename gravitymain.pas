@@ -76,6 +76,7 @@ FUNCTION calcThread(p:pointer):ptrint;
            .append(' frames but read only ')
            .append(calcFrameCount)
            .appendLineBreak;
+        calcFrameCount:=0;
         animStream.Seek(0,soBeginning);
         sys.destroy;
         sys.create;
@@ -117,13 +118,38 @@ FUNCTION calcThread(p:pointer):ptrint;
 { TGravMainForm }
 
 PROCEDURE TGravMainForm.FormCreate(Sender: TObject);
+  var positionIndex: longint;
   begin
     Application.title:=appTitle;
     caption:=appTitle;
     queue.create;
     beginThread(@calcThread,@queue);
     replaying:=false;
-    WindowState:=wsMinimized;
+
+    if hasPositionParameter(positionIndex) then begin
+      Left:=0;
+      Top :=0;
+      while (top+2*Height<screen.Height) and (positionIndex>0) do begin
+        while (left+2*Width<Screen.Width) and (positionIndex>0) do begin
+          left:=left+width;
+          dec(positionIndex);
+        end;
+        if positionIndex>0 then begin;
+          top:=top+height+30;
+          left:=0;
+          dec(positionIndex);
+        end;
+      end;
+      if positionIndex>0 then begin
+        left:=0;
+        top :=0;
+        WindowState:=wsMinimized;
+      end;
+    end else begin
+      {$ifndef debugMode}
+      WindowState:=wsMinimized;
+      {$endif}
+    end;
   end;
 
 PROCEDURE TGravMainForm.FormCloseQuery(Sender: TObject; VAR CanClose: boolean);

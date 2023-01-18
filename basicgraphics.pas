@@ -6,6 +6,18 @@ INTERFACE
 USES ExtCtrls,Classes,myGenerics;
 CONST UPPER_BLACK_LEVEL=0.0000029263403116397158;
       UPPER_C1_LEVEL   =0.00002633706280475744;
+      UPPER_C2_LEVEL   =0.00007315850778885903;
+      UPPER_C3_LEVEL   =0.0001433906752697249 ;
+      UPPER_C4_LEVEL   =0.00023703356523894044;
+      UPPER_C5_LEVEL   =0.00035408717770519913;
+      UPPER_C6_LEVEL   =0.0004945515126605124 ;
+      UPPER_C7_LEVEL   =0.0006584265701174937 ;
+      UPPER_C8_LEVEL   =0.00084571235005176826;
+      UPPER_C9_LEVEL   =0.0010564088525123138 ;
+      UPPER_C10_LEVEL  =0.0012905160774322384 ;
+      UPPER_C11_LEVEL  =0.0015480340248639987 ;
+      UPPER_C12_LEVEL  =0.0018289626947692759 ;
+      UPPER_C13_LEVEL  =0.0021333020871741586 ;
 TYPE
   T_rgbColor=array[0..2] of byte;
   P_rgbPicture=^T_rgbPicture;
@@ -101,18 +113,19 @@ FUNCTION T_animation.addFrame(CONST frame: P_rgbPicture): longint;
 
 PROCEDURE T_rgbPicture.setPixel(CONST x,y:longint; CONST m:double);
   begin
+    if not(isNan(m)) then mass+=m;
     if isNan(m) or (m>12.25)
     then             Pixels[x+y*SYS_SIZE]:=1023
     else if m<0 then Pixels[x+y*SYS_SIZE]:=   0
     else begin
       Pixels[x+y*SYS_SIZE]:=round(sqrt(m)*292.28571428571428);
-      mass+=m;
     end;
   end;
 
 CONSTRUCTOR T_rgbPicture.create;
   begin
     followedBy:=nil;
+    mass:=0;
     getMem(Pixels,sizeOf(SmallInt)*SYS_SIZE*SYS_SIZE);
   end;
 

@@ -23,7 +23,7 @@ CONST
 VAR DRIFT_TO_CENTER:boolean=false;
 
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
-FUNCTION straightAttraction(CONST rx,ry:TmyFloat):T_2dVector;
+FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:longint; VAR accel:T_vectorField);
 IMPLEMENTATION
@@ -38,8 +38,8 @@ FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
 	end else DRIFT_TO_CENTER:=true;  
   end;
 
-FUNCTION straightAttraction(CONST rx,ry:TmyFloat):T_2dVector;
-  VAR d:TmyFloat;
+FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
+  VAR d:double;
   begin
     d:=sqrt(rx*rx+ry*ry);
 	if d>20 

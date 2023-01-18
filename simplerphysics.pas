@@ -8,7 +8,7 @@ TYPE
   T_cellSystem=object(T_serializable)
     private
       value:T_systemState;
-      prevAccelTime:TmyFloat;
+      prevAccelTime:double;
     public
       numberOfFrames:longint;
       CONSTRUCTOR create;
@@ -25,12 +25,12 @@ IMPLEMENTATION
 USES sysutils,customization,math;
 VAR cachedAttraction:array [-SYS_SIZE+1..SYS_SIZE-1,-SYS_SIZE+1..SYS_SIZE-1] of T_2dVector;
     attractionInitialized:boolean=false;
-    sinus_table:array[0..SYS_SIZE-1] of TmyFloat;
+    sinus_table:array[0..SYS_SIZE-1] of double;
     box:array[0..SYS_SIZE-1] of set of byte;
 
 PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
   FUNCTION calculateAttraction(CONST x,y:longint):T_2dVector;
-    CONST GAUSS_LEGENDRE_WEIGHT:array[0..4,0..4] of record d,w:TmyFloat; end
+    CONST GAUSS_LEGENDRE_WEIGHT:array[0..4,0..4] of record d,w:double; end
     =(((d: 0.0                ; w:1.0                ),(d: 0.0                ; w:0.0                ),(d:0.0                ; w:0.0                ),(d:0.0                ; w:0.0                ),(d:0.0              ; w:0.0                )),
       ((d:-0.28867513459481287; w:0.5                ),(d: 0.28867513459481287; w:0.5                ),(d:0.0                ; w:0.0                ),(d:0.0                ; w:0.0                ),(d:0.0              ; w:0.0                )),
       ((d:-0.3872983346207417 ; w:0.27777777777777779),(d: 0.0                ; w:0.4444444444444444 ),(d:0.3872983346207417 ; w:0.27777777777777779),(d:0.0                ; w:0.0                ),(d:0.0              ; w:0.0                )),
@@ -58,6 +58,7 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
 
   VAR ix,iy:longint;
       symX,symY:longint;
+      temp:T_2dVector;
   begin
     if reinitializeAttractionFactors(stepIndex) or not(attractionInitialized) then begin
       log.append('(Re)initializing attraction factors').appendLineBreak;
@@ -65,12 +66,15 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
       for ix:=-SYS_SIZE+1 to SYS_SIZE-1 do for iy:=-SYS_SIZE+1 to SYS_SIZE-1 do begin
         //Due to symmetry considerations, only half of the entries have to be calculated
         if (ix>0) or (ix=0) and (iy>0)
-        then cachedAttraction[ix,iy]:=cachedAttraction[-ix,-iy]*-1
-        else begin
-          cachedAttraction[ix,iy]:=zeroVec;
+        then begin
+          cachedAttraction[ix,iy,0]:=-cachedAttraction[-ix,-iy,0];
+          cachedAttraction[ix,iy,1]:=-cachedAttraction[-ix,-iy,1];
+        end else begin
+          temp:=zeroVec;
           for symX:=-SYMMETRIC_CONTINUATION to SYMMETRIC_CONTINUATION do
           for symY:=-SYMMETRIC_CONTINUATION to SYMMETRIC_CONTINUATION do
-            cachedAttraction[ix,iy]+=calculateAttraction(ix+symX*SYS_SIZE,iy+symY*SYS_SIZE);
+            temp+=calculateAttraction(ix+symX*SYS_SIZE,iy+symY*SYS_SIZE);
+          cachedAttraction[ix,iy]:=temp;
         end;
       end;
     end;
@@ -100,7 +104,7 @@ DESTRUCTOR T_cellSystem.destroy;
 FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
   VAR newState:T_systemState;
       acceleration:T_vectorField;
-      masses:array[0..SYS_SIZE-1,0..SYS_SIZE-1] of single;
+      masses:array[0..SYS_SIZE-1,0..SYS_SIZE-1] of double;
 
   PROCEDURE setGravAcceleration;
     VAR i,j,oi,oj:longint;
@@ -150,7 +154,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
         i,j,ip,jp:longint;
 
     VAR pTot:T_2dVector=(0,0);
-        mTot:TmyFloat=0;
+        mTot:double=0;
         deltaV:T_2dVector=(0,0);
 
     FUNCTION cap(CONST n:double):double; inline;
@@ -254,21 +258,26 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
     end;
 
   CONST DT_MIN=dt/200; //not more than 200 sub steps
-        MAX_TRANSPORT_RANGE =10*dt;
+        MAX_TRANSPORT_RANGE =8*dt;
         SPEED_CAP=0.1*MAX_TRANSPORT_RANGE/DT_MIN;
   VAR capping:boolean=false;
-      dtRest,simTime:TmyFloat;
-  FUNCTION calcTimeStep:TmyFloat;
+      dtRest,simTime:double;
+  FUNCTION calcTimeStep:double;
     VAR i,j:longint;
         vMax,v:double;
     begin
       result:=dtRest;
-      // |result * dt| <= MAX_TRANSPORT_RANGE
+      // |result * vMax| <= MAX_TRANSPORT_RANGE
+      // for all cells: |v*dt+a*dt²/2| <= MAX_TRANSPORT_RANGE
+      // |v*dt+a*dt²/2| <= |v|*dt+|a|*dt²/2
+      // (v[0]*dt+a[0]*dt²/2)² + (v[1]*dt+a[1]*dt²/2)² <= MAX_TRANSPORT_RANGE²
+      //
 
       //Step size control...
       vMax:=epsilon;
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do if mass>UPPER_C1_LEVEL then begin
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do if mass>UPPER_C10_LEVEL then begin
         v:=(p[0]*p[0]+p[1]*p[1])/(mass*mass);
+        //v:=(sqr(p[0]+a[0]*dtRest)+sqr(p[1]+a[1]*dtRest))/(mass*mass);
         if v>vMax then vMax:=v;
       end;
       vMax:=sqrt(vMax);  //vMax= vMax
@@ -284,7 +293,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
       else result:=dtRest/ceil(dtRest/result);
     end;
 
-  PROCEDURE transport(CONST dtEff:TmyFloat);
+  PROCEDURE transport(CONST dtEff:double);
     CONST mask=SYS_SIZE-1;
 
     VAR i,j,ti,tj:longint;
@@ -332,7 +341,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
         y0:=j+step[1]; y1:=y0+1+f; y0-=f;
 
         value[i,j].mass*=1/((x1-x0)*(y1-y0));
-        value[i,j].p:=v*value[i,j].mass;
+        value[i,j].p:=v                *value[i,j].mass;
         value[i,j].a:=acceleration[i,j]*value[i,j].mass;
 
         for ti:=floor(x0) to floor(x1+1) do begin
@@ -353,7 +362,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
     end;
 
   VAR subStepsTaken:longint=0;
-      dtEff:TmyFloat;
+      dtEff:double;
       i,j:longint;
       m:double=0;
       start:double;
@@ -379,7 +388,6 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
     end;
 
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do m+=value[i,j].mass;
-    m*=GRID_SIZE*GRID_SIZE;
     log.append('Step ')
        .append(timeStepIndex)
        .append(' done: ')
@@ -396,12 +404,11 @@ FUNCTION T_cellSystem.getPicture: P_rgbPicture;
   begin
     new(result,create);
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do result^.setPixel(i,j,mass);
-    result^.mass*=GRID_SIZE*GRID_SIZE;
   end;
 
 FUNCTION T_cellSystem.getSerialVersion: dword;
   begin
-    result:=31358+SYS_SIZE;
+    result:=31359+SYS_SIZE;
   end;
 
 FUNCTION T_cellSystem.loadFromStream(VAR stream: T_bufferedInputStreamWrapper): boolean;

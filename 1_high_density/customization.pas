@@ -23,7 +23,7 @@ CONST
   DIFFUSION_BASE       =0.05;
 
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
-FUNCTION straightAttraction(CONST rx,ry:TmyFloat):T_2dVector;
+FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:longint; VAR accel:T_vectorField);
 IMPLEMENTATION
@@ -33,8 +33,8 @@ FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
     result:=false;
   end;
 
-FUNCTION straightAttraction(CONST rx,ry:TmyFloat):T_2dVector;
-  VAR d:TmyFloat;
+FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
+  VAR d:double;
   begin
     d:=1/(rx*rx+ry*ry);
     result[0]:=rx*d;

@@ -2,51 +2,42 @@ UNIT customization;
 INTERFACE
 USES vectors,commandLineHandling;
 CONST
-  SYMMETRIC_CONTINUATION=1;
+  SYMMETRIC_CONTINUATION=0;
   dt                    =0.05;
   GRID_SIZE             =1;
 
-  LIMITED_RANGE_ATTRACTION=true;
-  ATTRACTION_RANGE        =25;
-
-  REPULSION_THRESHOLD=0;
-  REPULSION_LINEAR   =2;
-  REPULSION_QUADRATIC=0.2;
-
-  ANNIHILATION_THRESHOLD=5;
-  ANNIHILATION_FACTOR   =1E-2;
-  
-  DIFFUSION_BY_VELOCITY=0.01;
-  DIFFUSION_BASE       =0.1;
+  LIMITED_RANGE_ATTRACTION=false;
+  ATTRACTION_RANGE        =256;
 
   DRIFT_TO_CENTER=true;
 
-VAR REGROWTH_FACTOR:double=1E-3;
+  REPULSION_THRESHOLD=0;
+  REPULSION_LINEAR   =1;
+  REPULSION_QUADRATIC=0;
 
+  ANNIHILATION_THRESHOLD=5;
+  ANNIHILATION_FACTOR   =1E-4;
+
+  REGROWTH_FACTOR=0;
+  DIFFUSION_BY_VELOCITY=0;
+  DIFFUSION_BASE       =0;
+  
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:longint; VAR accel:T_vectorField);
 IMPLEMENTATION
-VAR forceShift:double;
+
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
-  begin  
-    result:=(timeStepIndex mod 20=0);
-	forceShift:=pi-abs(timeStepIndex-2500)*pi/500;
-	case initialDensityVariant of
-      id_low:  REGROWTH_FACTOR:= 1E-3;
-      id_high: REGROWTH_FACTOR:= 2E-3;
-      else     REGROWTH_FACTOR:= 4E-3;
-    end;    
+  begin
+    result:=false;
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR d:double;
   begin
     d:=sqrt(rx*rx+ry*ry);
-	if d>ATTRACTION_RANGE 
-	then exit(zeroVec)
-	else d:=0.125*(sin(forceShift+d*2*pi/ATTRACTION_RANGE))/d;	
+    d:=1/(1E-10+d*sqr(d));
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;
@@ -58,11 +49,16 @@ FUNCTION getInitialState: T_systemState;
     case initialDensityVariant of
       id_low:  massFactor:= 0.1;
       id_high: massFactor:= 1;
-      else     massFactor:= 10;
+      else     massFactor:=10;
     end;
+	massFactor*=4/pi; //same mass on fewer cells
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with result[i,j] do begin
       mass:=massFactor+0.001*random;
-      p:=zeroVec;
+      p[0]:= 0.5-j/(SYS_SIZE-1);
+	  p[1]:=-0.5+i/(SYS_SIZE-1);
+	  
+	  if p[0]*p[0]+p[1]*p[1]>0.25 then mass:=0;
+	  p*=mass/(p[0]*p[0]+p[1]*p[1]);
     end;
   end;
 

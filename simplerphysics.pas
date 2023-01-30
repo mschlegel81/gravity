@@ -90,11 +90,9 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
 
 { T_cellSystem }
 CONSTRUCTOR T_cellSystem.create;
-  VAR i,j:longint;
   begin
     value:=getInitialState;
     prevAccelTime:=-1E50;
-    for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do value[i,j].a:=zeroVec;
   end;
 
 DESTRUCTOR T_cellSystem.destroy;
@@ -103,55 +101,28 @@ DESTRUCTOR T_cellSystem.destroy;
 
 FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
   VAR newState:T_systemState;
-      acceleration:T_vectorField;
-      masses:array[0..SYS_SIZE-1,0..SYS_SIZE-1] of double;
+      staggeredAcceleration,acceleration:T_vectorField;
 
   PROCEDURE setGravAcceleration;
     VAR i,j,oi,oj:longint;
-        a: T_2dVector;
     begin
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do acceleration[i,j]:=zeroVec;
       if LIMITED_RANGE_ATTRACTION then begin
-        for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
-          a:=zeroVec;
-          for oi in box[i] do for oj in box[j] do
-            a+=cachedAttraction[oi-i,oj-j]*value[oi,oj].mass;
-          acceleration[i,j]:=a;
-        end;
+        for i:=0 to SYS_SIZE-1 do for oi:=0 to SYS_SIZE-1 do if byte(oi and 255) in box[i] then
+        for j:=0 to SYS_SIZE-1 do for oj:=0 to SYS_SIZE-1 do if byte(oj and 255) in box[j] then
+          acceleration[i,j]+=cachedAttraction[oi-i,oj-j]*value[oi,oj].mass;
       end else begin
-        for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do masses[i,j]:=value[i,j].mass;
-        for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
-          a:=zeroVec;
-          for oi:=0 to SYS_SIZE-1 do for oj:=0 to SYS_SIZE-1 do
-            //a+=cachedAttraction[oi-i,oj-j]*value[oi,oj].mass;
-            a+=cachedAttraction[oi-i,oj-j]*masses[oi,oj];
-          acceleration[i,j]:=a;
-        end;
+        for i:=0 to SYS_SIZE-1 do for oi:=0 to SYS_SIZE-1 do
+        for j:=0 to SYS_SIZE-1 do for oj:=0 to SYS_SIZE-1 do
+          acceleration[i,j]+=cachedAttraction[oi-i,oj-j]*value[oi,oj].mass;
       end;
     end;
 
   PROCEDURE addPressureAccelerationAndDrift;
     CONST mask=SYS_SIZE-1;
-          WEIGHT:array[-2..2,-2..2] of T_2dVector=(
-            (( 0.08658977081756744,0.08658977081756744),( 0.2693962929060643,0.13469814645303216),( 0.4065696597405991,0.0),( 0.2693962929060643,-0.13469814645303216),( 0.08658977081756744,-0.08658977081756744)),
-            (( 0.13469814645303216,0.2693962929060643 ),( 0.523837587470595 ,0.523837587470595  ),( 1.0               ,0.0),( 0.523837587470595 ,-0.523837587470595  ),( 0.13469814645303216,-0.2693962929060643)),
-            (( 0.0                ,0.4065696597405991 ),( 0.0               ,1.0                ),( 0.0               ,0.0),( 0.0               ,-1.0                ),( 0.0                ,-0.4065696597405991)),
-            ((-0.13469814645303216,0.2693962929060643 ),(-0.523837587470595 ,0.523837587470595  ),(-1.0               ,0.0),(-0.523837587470595 ,-0.523837587470595  ),(-0.13469814645303216,-0.2693962929060643)),
-            ((-0.08658977081756744,0.08658977081756744),(-0.2693962929060643,0.13469814645303216),(-0.4065696597405991,0.0),(-0.2693962929060643,-0.13469814645303216),(-0.08658977081756744,-0.08658977081756744)));
-{MNH-source for weight:
-        [-2..2].each(x,
-        [-2..2].each(y,begin
-          local dir:=[x,y]; x=y=0 ? void : dir/=-dir.euklideanNorm;
-          dir*exp(-0.3*(sqr(x)+sqr(y)));
-        end))
-        ./(exp(-0.3))
-        .toString
-        .replace('[','(')
-        .replace(']',')');
-}
-    VAR local:array[-2..2,-2..2] of double;
-        a:T_2dVector;
-        i_:array[-2..2] of longint;
-        i,j,ip,jp:longint;
+
+    VAR local:array[-1..1,-1..1] of double;
+        i,j,ip,jp,im:longint;
 
     VAR pTot:T_2dVector=(0,0);
         mTot:double=0;
@@ -175,113 +146,75 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
         deltaV[1]+=mass*sinus_table[j];
       end;
       if DRIFT_TO_CENTER
-      then deltaV:=(deltaV-pTot*0.5)*( 20/mTot)
-      else deltaV:=        pTot*(-      1/mTot);
+      then deltaV:=(deltaV-pTot*(1/3 ))*( 3/mTot)
+      else deltaV:=        pTot        *(-1/mTot);
 
       if (REPULSION_LINEAR=0) AND (REPULSION_QUADRATIC=0)
-      then for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do acceleration[i,j]+=deltaV
-      else begin
+      then begin
+        for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do staggeredAcceleration[i,j]:=deltaV;
+      end else begin
         for i:=0 to SYS_SIZE-1 do begin
-          i_[-2]:=(i+mask+mask) and mask;
-          i_[-1]:=(i+mask     ) and mask;
-          i_[ 0]:= i                    ;
-          i_[ 1]:=(i+1        ) and mask;
-          i_[ 2]:=(i+2        ) and mask;
+          ip:=(i+1) and mask;
+          im:=(i+mask) and mask;
+          local[-1, 0]:=cap(value[im,mask].mass);
+          local[ 0, 0]:=cap(value[i ,mask].mass);
+          local[ 1, 0]:=cap(value[ip,mask].mass);
+
+          local[-1, 1]:=cap(value[im,0   ].mass);
+          local[ 0, 1]:=cap(value[i ,0   ].mass);
+          local[ 1, 1]:=cap(value[ip,0   ].mass);
           for j:=0 to SYS_SIZE-1 do begin
-            if j=0 then begin
-              local[-2,-2]:=cap(value[i_[-2],(j+mask+mask) and mask].mass);
-              local[-2,-1]:=cap(value[i_[-2],(j+mask     ) and mask].mass);
-              local[-2, 0]:=cap(value[i_[-2], j                    ].mass);
-              local[-2, 1]:=cap(value[i_[-2],(j+1)         and mask].mass);
-              local[-2, 2]:=cap(value[i_[-2],(j+2)         and mask].mass);
+            jp:=(j+1) and mask;
+            local[-1,-1]:=local[-1,0]; local[-1,0]:=local[-1,1]; local[-1,1]:=cap(value[im,jp].mass);
+            local[ 0,-1]:=local[ 0,0]; local[ 0,0]:=local[ 0,1]; local[ 0,1]:=cap(value[i ,jp].mass);
+            local[ 1,-1]:=local[ 1,0]; local[ 1,0]:=local[ 1,1]; local[ 1,1]:=cap(value[ip,jp].mass);
 
-              local[-1,-2]:=cap(value[i_[-1],(j+mask+mask) and mask].mass);
-              local[-1,-1]:=cap(value[i_[-1],(j+mask     ) and mask].mass);
-              local[-1, 0]:=cap(value[i_[-1], j                    ].mass);
-              local[-1, 1]:=cap(value[i_[-1],(j+1)         and mask].mass);
-              local[-1, 2]:=cap(value[i_[-1],(j+2)         and mask].mass);
-
-              local[ 0,-2]:=cap(value[i     ,(j+mask+mask) and mask].mass);
-              local[ 0,-1]:=cap(value[i     ,(j+mask     ) and mask].mass);
-              local[ 0, 0]:=cap(value[i     , j                    ].mass);
-              local[ 0, 1]:=cap(value[i     ,(j+1)         and mask].mass);
-              local[ 0, 2]:=cap(value[i     ,(j+2)         and mask].mass);
-
-              local[ 1,-2]:=cap(value[i_[ 1],(j+mask+mask) and mask].mass);
-              local[ 1,-1]:=cap(value[i_[ 1],(j+mask     ) and mask].mass);
-              local[ 1, 0]:=cap(value[i_[ 1], j                    ].mass);
-              local[ 1, 1]:=cap(value[i_[ 1],(j+1)         and mask].mass);
-              local[ 1, 2]:=cap(value[i_[ 1],(j+2)         and mask].mass);
-
-              local[ 2,-2]:=cap(value[i_[ 2],(j+mask+mask) and mask].mass);
-              local[ 2,-1]:=cap(value[i_[ 2],(j+mask     ) and mask].mass);
-              local[ 2, 0]:=cap(value[i_[ 2], j                    ].mass);
-              local[ 2, 1]:=cap(value[i_[ 2],(j+1)         and mask].mass);
-              local[ 2, 2]:=cap(value[i_[ 2],(j+2)         and mask].mass);
-            end else begin
-              local[-2,-2]:=local[-2,-1];
-              local[-2,-1]:=local[-2, 0];
-              local[-2, 0]:=local[-2, 1];
-              local[-2, 1]:=local[-2, 2];
-              local[-2, 2]:=cap(value[i_[-2],(j+2)         and mask].mass);
-
-              local[-1,-2]:=local[-1,-1];
-              local[-1,-1]:=local[-1, 0];
-              local[-1, 0]:=local[-1, 1];
-              local[-1, 1]:=local[-1, 2];
-              local[-1, 2]:=cap(value[i_[-1],(j+2)         and mask].mass);
-
-              local[ 0,-2]:=local[ 0,-1];
-              local[ 0,-1]:=local[ 0, 0];
-              local[ 0, 0]:=local[ 0, 1];
-              local[ 0, 1]:=local[ 0, 2];
-              local[ 0, 2]:=cap(value[i     ,(j+2)         and mask].mass);
-
-              local[ 1,-2]:=local[ 1,-1];
-              local[ 1,-1]:=local[ 1, 0];
-              local[ 1, 0]:=local[ 1, 1];
-              local[ 1, 1]:=local[ 1, 2];
-              local[ 1, 2]:=cap(value[i_[ 1],(j+2)         and mask].mass);
-
-              local[ 2,-2]:=local[ 2,-1];
-              local[ 2,-1]:=local[ 2, 0];
-              local[ 2, 0]:=local[ 2, 1];
-              local[ 2, 1]:=local[ 2, 2];
-              local[ 2, 2]:=cap(value[i_[ 2],(j+2)         and mask].mass);
-            end;
-            a:=deltaV;
-            for ip:=-2 to 2 do for jp:=-2 to 2 do a+=WEIGHT[ip,jp]*local[ip,jp];
-            acceleration[i,j]+=a;
+            staggeredAcceleration[i,j,0]:=deltaV[0]+0.8*(local[0, 0]-local[1, 0])
+                                                   +0.1*(local[0, 1]-local[1, 1])
+                                                   +0.1*(local[0,-1]-local[1,-1]);
+            staggeredAcceleration[i,j,1]:=deltaV[1]+0.8*(local[ 0,0]-local[ 0,1])
+                                                   +0.1*(local[ 1,0]-local[ 1,1])
+                                                   +0.1*(local[-1,0]-local[-1,1]);
           end;
         end;
       end;
     end;
 
   CONST DT_MIN=dt/200; //not more than 200 sub steps
-        MAX_TRANSPORT_RANGE =8*dt;
-        SPEED_CAP=0.1*MAX_TRANSPORT_RANGE/DT_MIN;
+        MAX_TRANSPORT_RANGE=0.7141*GRID_SIZE;
+        SPEED_CAP=0.5*MAX_TRANSPORT_RANGE/DT_MIN;
   VAR capping:boolean=false;
-      dtRest,simTime:double;
+      dtRest:double;
   FUNCTION calcTimeStep:double;
+    CONST mask=SYS_SIZE-1;
     VAR i,j:longint;
-        vMax,v:double;
+        vMax,v,a,dadxMax,aMax:double;
     begin
       result:=dtRest;
-      // |result * vMax| <= MAX_TRANSPORT_RANGE
-      // for all cells: |v*dt+a*dt²/2| <= MAX_TRANSPORT_RANGE
-      // |v*dt+a*dt²/2| <= |v|*dt+|a|*dt²/2
-      // (v[0]*dt+a[0]*dt²/2)² + (v[1]*dt+a[1]*dt²/2)² <= MAX_TRANSPORT_RANGE²
-      //
-
-      //Step size control...
       vMax:=epsilon;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do if mass>UPPER_C10_LEVEL then begin
-        v:=(p[0]*p[0]+p[1]*p[1])/(mass*mass);
-        //v:=(sqr(p[0]+a[0]*dtRest)+sqr(p[1]+a[1]*dtRest))/(mass*mass);
+        v:=(p[0]*p[0]+p[1]*p[1]+(a[0]*a[0]+a[1]*a[1])*dt*dt)/(mass*mass);
         if v>vMax then vMax:=v;
       end;
       vMax:=sqrt(vMax);  //vMax= vMax
-      result:=MAX_TRANSPORT_RANGE/vMax;
+
+      aMax:=epsilon;
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do if value[i,j].mass>UPPER_C10_LEVEL then begin
+        a:=sqr(acceleration[i,j,0])+sqr(acceleration[i,j,1]);
+        if a>aMax then aMax:=a;
+      end;
+      aMax:=sqrt(aMax);
+
+      dadxMax:=epsilon;
+      if (REPULSION_LINEAR<>0) or (REPULSION_QUADRATIC<>0) then
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do if value[i,j].mass>UPPER_C1_LEVEL then begin
+        a:=abs(staggeredAcceleration[i,j,0]-staggeredAcceleration[(i+1) and mask,j,0]); if a>dadxMax then dadxMax:=a;
+        a:=abs(staggeredAcceleration[i,j,1]-staggeredAcceleration[i,(j+1) and mask,1]); if a>dadxMax then dadxMax:=a;
+      end;
+      aMax:=max(aMax,dadxMax*4);
+
+      result:=min(MAX_TRANSPORT_RANGE/vMax,
+                  sqrt(MAX_TRANSPORT_RANGE*2/aMax));
 
       if result<DT_MIN then begin
         result:=DT_MIN;
@@ -295,14 +228,22 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
 
   PROCEDURE transport(CONST dtEff:double);
     CONST mask=SYS_SIZE-1;
-
-    VAR i,j,ti,tj:longint;
+    VAR simTime:double;
+        i,j,ti,tj:longint;
         x0,x1,y0,y1,
+        cellX0,cellX1,cellY0,cellY1,
         wx,wy:double;
-        v,step,jerk:T_2dVector;
-        f,jerkFactor:double;
+        acc,v:T_2dVector;
+        f,
+        vx0,vx1,vy0,vy1,
+        ax0,ax1,ay0,ay1,
+        jx0,jx1,jy0,jy1:double;
+        jerkFactor:double;
     begin
+      simTime:=(timeStepIndex+1)*dt-dtRest;
       jerkFactor:=1/(simTime-prevAccelTime);
+      prevAccelTime:=simTime;
+
       //Lagrangian transport:
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with newState[i,j] do begin mass:=0; p:=zeroVec; a:=zeroVec; end;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
@@ -310,10 +251,10 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
           if mass>UPPER_C1_LEVEL
           then begin
             v:=p*(1/mass);
-            a*=   1/mass;
+            a*=  (1/mass);
           end else begin
             v:=p*(1/(epsilon+mass));
-            a*=   1/(epsilon+mass);
+            a*=  (1/(epsilon+mass));
           end;
           if capping and (mass>=UPPER_BLACK_LEVEL) then begin //cap speed
             //squared speed:
@@ -330,30 +271,75 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
             mass+=REGROWTH_FACTOR*dtEff;
         end;
 
-        jerk:=(acceleration[i,j]-value[i,j].a)*jerkFactor;
 
-        step:=(v+(acceleration[i,j]+jerk*(dtEff/3))*(dtEff/2))*dtEff;
-        v   +=(   acceleration[i,j]+jerk*(dtEff/2)           )*dtEff;
+        acc:=acceleration[i,j];
+        f:=(DIFFUSION_BASE+DIFFUSION_BY_VELOCITY*sqrt(sqr(v[0])+sqr(v[1])))*dtEff;
+        if f>2.5 then f:=2.5 else if f<0 then f:=0;
 
-        f:=(DIFFUSION_BASE+DIFFUSION_BY_VELOCITY*sqrt(sqr(v[0])+sqr(v[1])))*dt;
-        if f>2 then f:=2 else if f<0 then f:=0;
-        x0:=i+step[0]; x1:=x0+1+f; x0-=f;
-        y0:=j+step[1]; y1:=y0+1+f; y0-=f;
+        //a = d²x/dt²
+        ax0:=acc[0]+staggeredAcceleration[(i+mask) and mask,j,0];
+        ax1:=acc[0]+staggeredAcceleration[ i               ,j,0];
+        ay0:=acc[1]+staggeredAcceleration[i,(j+mask) and mask,1];
+        ay1:=acc[1]+staggeredAcceleration[i, j               ,1];
+
+        //j = d³x/dt³ = (a(t_current)-a(t_prev))/(t_current-t_prev) = (a(t_current)-a(t_prev))*jerkFactor
+        jx0:=(ax0-value[i,j].a[0])*jerkFactor;
+        jx1:=(ax1-value[i,j].a[0])*jerkFactor;
+        jy0:=(ay0-value[i,j].a[1])*jerkFactor;
+        jy1:=(ay1-value[i,j].a[1])*jerkFactor;
+
+        //v = v0 + dt*a + dt²/2*j
+        //  = v0 + dt*(a+dt/2*j)
+        vx0:=v[0] +dtEff*(ax0 +dtEff*0.5* jx0                      );
+        vx1:=v[0] +dtEff*(ax1 +dtEff*0.5* jx1                      );
+        vy0:=v[1] +dtEff*(ay0 +dtEff*0.5* jy0                      );
+        vy1:=v[1] +dtEff*(ay1 +dtEff*0.5* jy1                      );
+
+        //x = x0 + dt*v + dt²/2*a + dt³/6*j
+        //  = x0 + dt*(v+dt/2*(a+dt/3*j))
+        x0 :=i  -f+dtEff*(v[0]+dtEff*0.5*(ax0+jx0*dtEff*0.33333333));
+        x1 :=i+1+f+dtEff*(v[0]+dtEff*0.5*(ax1+jx1*dtEff*0.33333333));
+        y0 :=j-  f+dtEff*(v[1]+dtEff*0.5*(ay0+jy0*dtEff*0.33333333));
+        y1 :=j+1+f+dtEff*(v[1]+dtEff*0.5*(ay1+jy1*dtEff*0.33333333));
+
+        if SYMMETRIC_CONTINUATION<=0 then begin
+          if x0<0        then begin x0:=0       ; if x1<x0+1 then x1:=x0+1; vx0:= abs(vx0); end;
+          if x1>SYS_SIZE then begin x1:=SYS_SIZE; if x0>x1-1 then x0:=x1-1; vx1:=-abs(vx1); end;
+          if y0<0        then begin y0:=0       ; if y1<y0+1 then y1:=y0+1; vy0:= abs(vy0); end;
+          if y1>SYS_SIZE then begin y1:=SYS_SIZE; if y0>y1-1 then y0:=y1-1; vy1:=-abs(vy1); end;
+        end else begin
+          if x1<x0+1 then begin x0:=(x0+x1)*0.5-0.5; x1:=x0+1; end;
+          if y1<y0+1 then begin y0:=(y0+y1)*0.5-0.5; y1:=y0+1; end;
+        end;
 
         value[i,j].mass*=1/((x1-x0)*(y1-y0));
-        value[i,j].p:=v                *value[i,j].mass;
-        value[i,j].a:=acceleration[i,j]*value[i,j].mass;
+        vx0*=value[i,j].mass;
+        vx1*=value[i,j].mass; vx1:=(vx1-vx0)/(x1-x0);
+        vy0*=value[i,j].mass;
+        vy1*=value[i,j].mass; vy1:=(vy1-vy0)/(y1-y0);
+        ax0*=value[i,j].mass;
+        ax1*=value[i,j].mass; ax1:=(ax1-ax0)/(x1-x0);
+        ay0*=value[i,j].mass;
+        ay1*=value[i,j].mass; ay1:=(ay1-ay0)/(y1-y0);
 
         for ti:=floor(x0) to floor(x1+1) do begin
           //intersection of intervals [ti,ti+1] and [x0,x1]
           // = [max(ti,x0),min(x1,ti+1)] -> weight =
-          wx:=min(x1,ti+1)-max(x0,ti);
+          cellX0:=max(x0,ti);
+          cellX1:=min(x1,ti+1);
+          wx:=cellX1-cellX0;
+          v  [0]:=((cellX0+cellX1)*0.5-x0)*vx1+vx0;
+          acc[0]:=((cellX0+cellX1)*0.5-x0)*ax1+ax0;
           if wx>0 then for tj:=floor(y0) to floor(y1+1) do begin
-            wy:=min(y1,tj+1)-max(y0,tj);
+            cellY0:=max(y0,tj);
+            cellY1:=min(y1,tj+1);
+            wy:=(cellY1-cellY0)*wx;
             if wy>0 then with newState[ti and mask,tj and mask] do begin
-              mass+=value[i,j].mass*(wx*wy);
-              p   +=value[i,j].p   *(wx*wy);
-              a   +=value[i,j].a   *(wx*wy);
+              v  [1]:=((cellY0+cellY1)*0.5-y0)*vy1+vy0;
+              acc[1]:=((cellY0+cellY1)*0.5-y0)*ay1+ay0;
+              mass+=value[i,j].mass*wy;
+              p   +=v              *wy;
+              a   +=acc            *wy;
             end;
           end;
         end;
@@ -374,15 +360,11 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
 
     dtRest:=dt;
     while dtRest>0 do begin
-      simTime:=(timeStepIndex+1)*dt-dtRest;
       setGravAcceleration;
       addBackgroundAcceleration(timeStepIndex,acceleration);
       addPressureAccelerationAndDrift;
       dtEff:=calcTimeStep;
       transport(dtEff);
-
-      prevAccelTime:=simTime;
-
       dtRest-=dtEff;
       inc(subStepsTaken)
     end;

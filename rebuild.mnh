@@ -8,7 +8,7 @@ MODES:=['--bm=opt32' =>'grav032.exe',
 execBuild(customizationFile:String,mode:StringList(2),missingOnly:Boolean)->begin
   local targets:=split(customizationFile.extractFileDirectory,'_')[0]&['_high_density/','_low_density/','_ultra_density/']&mode[1];
   missingOnly
-  ? targets:=targets.filter((f)->!fileExists(f))
+  ? targets:=targets.filter((f)->!fileExists(f) AND !(fileExists(f.changeFileExt('.mnh')) AND fileExists(f.changeFileExt('.dat'))))
   : void;
   targets.size==0 ? return void :
 

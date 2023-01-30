@@ -129,7 +129,7 @@ PROCEDURE TGravMainForm.FormCreate(Sender: TObject);
     if hasPositionParameter(positionIndex) then begin
       Left:=0;
       Top :=0;
-      while (top+2*Height<screen.Height) and (positionIndex>0) do begin
+      while (top+Height<screen.Height) and (positionIndex>0) do begin
         while (left+2*Width<Screen.Width) and (positionIndex>0) do begin
           left:=left+width;
           dec(positionIndex);

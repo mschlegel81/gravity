@@ -7,11 +7,11 @@ CONST
   GRID_SIZE             =1;
 
   LIMITED_RANGE_ATTRACTION=true;
-  ATTRACTION_RANGE        =20;
+  ATTRACTION_RANGE        =0;
 
-  REPULSION_THRESHOLD=1;
-  REPULSION_LINEAR   =50;
-  REPULSION_QUADRATIC=0.1;
+  REPULSION_THRESHOLD=0;
+  REPULSION_LINEAR   =25;
+  REPULSION_QUADRATIC=5;
 
   ANNIHILATION_THRESHOLD=5;
   ANNIHILATION_FACTOR   =0;
@@ -19,8 +19,8 @@ CONST
   REGROWTH_FACTOR=0;
   DIFFUSION_BY_VELOCITY=0.01;
   DIFFUSION_BASE       =0.6;  
-
-VAR DRIFT_TO_CENTER:boolean=false;
+  
+  DRIFT_TO_CENTER=false;
 
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
@@ -28,25 +28,15 @@ FUNCTION getInitialState:T_systemState;
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:longint; VAR accel:T_vectorField);
 IMPLEMENTATION
 VAR forceFactor:double=0;
+    
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
   begin  
-    result:=(timeStepIndex mod 20=0);
-	forceFactor:=0.1E-3*(timeStepIndex mod 1000);
-	if timeStepIndex mod 1000>=800 then begin
-	  forceFactor:=0;
-	  DRIFT_TO_CENTER:=false;
-	end else DRIFT_TO_CENTER:=true;  
+    result:=false;
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
-  VAR d:double;
   begin
-    d:=sqrt(rx*rx+ry*ry);
-	if d>20 
-	then exit(zeroVec)
-	else d:=forceFactor*(1+cos(d*pi/ATTRACTION_RANGE))/d;	
-    result[0]:=rx*d;
-    result[1]:=ry*d;
+    result:=zeroVec;	
   end;
 
 FUNCTION getInitialState: T_systemState;
@@ -65,7 +55,44 @@ FUNCTION getInitialState: T_systemState;
   end;
 
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:longint; VAR accel: T_vectorField);
+  VAR bgX,bgY,bgFactor,bgRad:double;
+  FUNCTION bgAttraction(CONST rx,ry:double):T_2dVector;
+    FUNCTION boxed(CONST z:double):double;
+      begin
+        result:=z;
+    	    if result>0.5 then result-=1 else if result<-0.5 then result+=1;
+      end;
+    VAR dx,dy,f:double;
+    begin
+      dx:=boxed(rx-bgX); dy:=boxed(ry-bgY);
+      f:=sqrt(sqr(dx)+sqr(dy));
+      if (f<bgRad) then begin
+    	f:=bgFactor*(1+cos(f/bgRad*pi))/f;
+    	    result[0]:=dx*f;
+        result[1]:=dy*f;
+      end else result:=zeroVec;
+
+      dx:=boxed(rx+bgX); dy:=boxed(ry+bgY);
+      f:=sqrt(sqr(dx)+sqr(dy));
+      if (f<bgRad) then begin
+    	f:=bgFactor*(1+cos(f/bgRad*pi))/f;
+    	    result[0]-=dx*f;
+        result[1]-=dy*f;
+      end;
+    end;
+
+  VAR angle:double;
+      ix, iy: Integer;
   begin
+    angle:=timeStepIndex/5000*20*pi;
+    bgX:=0.25*cos(angle);
+    bgY:=0.25*sin(angle);
+    bgFactor:=exp(timeStepIndex/800);
+    bgRad:=0.1+0.4*sqr(timeStepIndex/5000);
+    for ix:=0 to SYS_SIZE-1 do for iy:=0 to SYS_SIZE-1 do
+      accel[ix,iy]+=
+            bgAttraction((ix/(SYS_SIZE-1)-0.5),
+      	               (iy/(SYS_SIZE-1)-0.5));
   end;
 
 end.

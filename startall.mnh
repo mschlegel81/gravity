@@ -1,5 +1,6 @@
 USE cpuMonitor;
 
+MAX_GRAV_INSTANCES:=12;
 datastore occupiedIndexes:=[].toMap;
 
 positionParameter(execName:String)->begin
@@ -35,7 +36,17 @@ end;
 
 memoized mnhFiles->allFiles('.','*.mnh').filter((f)->f.extractFileDirectory<>'.' AND f.matches('grav\d+\.mnh'));
 
-runningGravTasks->getTaskInfo.map((i)->gravExes[!pos(gravExes,i['commandLine']).isInfinite][0]).toSet;
+private mutable runningGravTask__:=[-10];
+private synchronized invalidateRunningGravTasks->runningGravTask__:=[-10];
+synchronized runningGravTasks->begin
+  scriptTime>runningGravTask__[0]+5
+  ? begin
+      runningGravTask__[1]:=getTaskInfo.map((i)->gravExes[!pos(gravExes,i['commandLine']).isInfinite][0]).toSet;
+      runningGravTask__[0]:=scriptTime;
+    end
+  : void;
+  runningGravTask__[1];
+end;
 
 mutable toClear:=0;
 tPrint(...)->begin
@@ -67,7 +78,6 @@ exeSorting(L:StringCollection)->L.map((n)->n.extractFileNameOnly.clean(['0'..'9'
 start(replay:Boolean)->begin
   assertUniqueInstance;
   local CPU_threshold:=replay ? 85 : 50;
-  local alreadyRunning:=runningGravTasks;
   local firstQuestion:=true;
   local userSignal:='';
   localAsync({while(true,begin
@@ -79,12 +89,14 @@ start(replay:Boolean)->begin
   local startedCount:=0;
   gravExes
   .exeSorting
-  .each(execName,!fileExists(execName)      ? tPrint('          ',execName.relativeFileName,' has been deleted') :
-                 execName in alreadyRunning ? tPrint('          ',execName.relativeFileName,' is already running')
+  .each(execName,!fileExists(execName)        ? tPrint('          ',execName.relativeFileName,' has been deleted') :
+                 execName in runningGravTasks ? tPrint('          ',execName.relativeFileName,' is already running')
                  : begin
                      userSignal:=userSignal==QUIT ? QUIT : '';
                      local load:=getCpuLoadHistory(32);
-                     while(((load.size<16 OR max(load-[load.size-1..0])>=CPU_threshold) OR (scriptTime<lastStartedAt+1)) AND (userSignal=='') ,begin
+                     while(((load.size<16 OR max(load-[load.size-1..0])>=CPU_threshold) OR
+                            (runningGravTasks.size>=MAX_GRAV_INSTANCES) OR
+                            (scriptTime<lastStartedAt+1)) AND (userSignal=='') ,begin
                        tPrintD('Next:     ',execName.relativeFileName,"; CPU: ",BLOCKS[load].join,load.trailing,'%');
                        load:=getCpuLoadHistory(32);
                        sleep(0.1);
@@ -98,12 +110,11 @@ start(replay:Boolean)->begin
                          execute(execName,replay);
                          lastStartedAt:=scriptTime;
                          startedCount+=1;
-                         while(execName not in (alreadyRunning:=runningGravTasks),sleep(0.1));
+                         invalidateRunningGravTasks;
                        end;
                    end);
   tPrint(startedCount,' tasks started');
-  alreadyRunning:=getTaskInfo.map((i)->i['commandLine']).filter((cl)->!pos(gravExes,cl).isInfinite.agg(and));
-  tPrint(alreadyRunning.size,' tasks are running: ',join("\n  "&sort(alreadyRunning)));
+  tPrint(runningGravTasks.size,' tasks are running: ',join("\n  "&sort(runningGravTasks)));
 end;
 
 //*Start in calculation mode

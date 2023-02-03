@@ -11,7 +11,7 @@ CONST
 
   DRIFT_TO_CENTER=true;
 
-  REPULSION_THRESHOLD=5;
+  REPULSION_THRESHOLD=0;
   REPULSION_LINEAR   =1;
   REPULSION_QUADRATIC=0;
 
@@ -36,7 +36,7 @@ FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR d:double;
   begin
-    d:=1/(rx*rx+ry*ry);
+    d:=0.5/(rx*rx+ry*ry);
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;

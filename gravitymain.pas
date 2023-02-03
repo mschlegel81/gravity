@@ -130,12 +130,12 @@ PROCEDURE TGravMainForm.FormCreate(Sender: TObject);
       Left:=0;
       Top :=0;
       while (top+Height<screen.Height) and (positionIndex>0) do begin
-        while (left+2*Width<Screen.Width) and (positionIndex>0) do begin
-          left:=left+width;
+        while (left+2*Width+10<Screen.Width) and (positionIndex>0) do begin
+          left:=left+width+5;
           dec(positionIndex);
         end;
         if positionIndex>0 then begin;
-          top:=top+height+30;
+          top:=top+height+40;
           left:=0;
           dec(positionIndex);
         end;

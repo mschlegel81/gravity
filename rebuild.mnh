@@ -5,6 +5,11 @@ MODES:=['--bm=opt32' =>'grav032.exe',
         '--bm=opt128'=>'grav128.exe',
         '--bm=opt256'=>'grav256.exe'];
 
+softFail(...)->begin
+  warn@...;
+  beep;
+end;
+
 execBuild(customizationFile:String,mode:StringList(2),missingOnly:Boolean)->begin
   local targets:=split(customizationFile.extractFileDirectory,'_')[0]&['_high_density/','_low_density/','_ultra_density/']&mode[1];
   missingOnly
@@ -16,15 +21,13 @@ execBuild(customizationFile:String,mode:StringList(2),missingOnly:Boolean)->begi
   copyFile(customizationFile,'customization.pas').assert;
   local buildOut:=exec(LAZ_BUILD,[LPI,mode[0]]);
   buildOut[1]==0
-  ? void
-  : fail('Build failed for mode ',mode[0]," with:\n",buildOut[0].join("\n"));
-
-  future((src,tgt)->begin
-    tgt.each(t,
-      printf('%s -> %s',src,t),
-      copyFile(src,t).assert('Copy failed for: ',src,' -> ',t));
-    deleteFile(src);
-  end,[mode[1],targets]);
+  ? future((src,tgt)->begin
+      tgt.each(t,
+        printf('%s -> %s',src,t),
+        copyFile(src,t) ? void : softFail('Copy failed for: ',src,' -> ',t));
+      deleteFile(src);
+    end,[mode[1],targets])
+  : softFail('Build failed for mode ',mode[0]," with:\n",buildOut[0].join("\n"));
 end;
 
 rebuild(missingOnly:Boolean,prefix)->

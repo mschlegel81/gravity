@@ -12,7 +12,7 @@ CONST
   DRIFT_TO_CENTER=true;
 
   REPULSION_THRESHOLD=0;
-  REPULSION_LINEAR   =5;
+  REPULSION_LINEAR   =1;
   REPULSION_QUADRATIC=0;
 
   ANNIHILATION_THRESHOLD=5;
@@ -21,7 +21,7 @@ CONST
   REGROWTH_FACTOR=0;
   DIFFUSION_BY_VELOCITY=0;
   DIFFUSION_BASE       =0;
-  
+
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
@@ -36,8 +36,7 @@ FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR d:double;
   begin
-    d:=sqrt(rx*rx+ry*ry);
-    d:=1/(1E-10+d*sqr(d));
+    d:=0.5/(rx*rx+ry*ry);
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;
@@ -67,11 +66,15 @@ PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:longint; VAR accel: T_ve
   begin
     for i:=0 to SYS_SIZE-1 do begin
 	  accel[0         ,i,0]+=20;
+	  accel[1         ,i,0]+=10;
 	  accel[SYS_SIZE-2,i,0]-=20;
+	  accel[SYS_SIZE-3,i,0]-=10;
 	end;  
     for i:=0 to SYS_SIZE-1 do begin
 	  accel[i,0         ,1]+=20;
+	  accel[i,1         ,1]+=10;	  
 	  accel[i,SYS_SIZE-2,1]-=20;
+	  accel[i,SYS_SIZE-3,1]-=10;
 	end;  
   end;
 

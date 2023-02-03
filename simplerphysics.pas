@@ -30,30 +30,14 @@ VAR cachedAttraction:array [-SYS_SIZE+1..SYS_SIZE-1,-SYS_SIZE+1..SYS_SIZE-1] of 
 
 PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
   FUNCTION calculateAttraction(CONST x,y:longint):T_2dVector;
-    CONST GAUSS_LEGENDRE_WEIGHT:array[0..4,0..4] of record d,w:double; end
-    =(((d: 0.0                ; w:1.0                ),(d: 0.0                ; w:0.0                ),(d:0.0                ; w:0.0                ),(d:0.0                ; w:0.0                ),(d:0.0              ; w:0.0                )),
-      ((d:-0.28867513459481287; w:0.5                ),(d: 0.28867513459481287; w:0.5                ),(d:0.0                ; w:0.0                ),(d:0.0                ; w:0.0                ),(d:0.0              ; w:0.0                )),
-      ((d:-0.3872983346207417 ; w:0.27777777777777779),(d: 0.0                ; w:0.4444444444444444 ),(d:0.3872983346207417 ; w:0.27777777777777779),(d:0.0                ; w:0.0                ),(d:0.0              ; w:0.0                )),
-      ((d:-0.43056815579702629; w:0.17392742256872692),(d:-0.16999052179242816; w:0.3260725774312731 ),(d:0.16999052179242816; w:0.3260725774312731 ),(d:0.43056815579702629; w:0.17392742256872692),(d:0.0              ; w:0.0                )),
-      ((d:-0.453089922969332  ; w:0.11846344252809454),(d:-0.26923465505284155; w:0.23931433524968324),(d:0.0                ; w:0.28444444444444444),(d:0.26923465505284155; w:0.23931433524968324),(d:0.453089922969332; w:0.11846344252809454)));
-
-    VAR distance:double;
-        n,i,j:longint;
+    VAR dx,dy:double;
     begin
-      distance:=x*x+y*y;
-      if      distance<=sqr( 2) then n:=4
-      else if distance<=sqr( 4) then n:=3
-      else if distance<=sqr( 8) then n:=2
-      else if distance<=sqr(16) then n:=1
-      else                           n:=0;
-
-      result:=zeroVec;
-      if (x<>0) or (y<>0) then for i:=0 to n do for j:=0 to n do
-        result+=straightAttraction(x+GAUSS_LEGENDRE_WEIGHT[n,i].d,
-                                   y+GAUSS_LEGENDRE_WEIGHT[n,j].d)
-                                 *(  GAUSS_LEGENDRE_WEIGHT[n,i].w
-                                    *GAUSS_LEGENDRE_WEIGHT[n,j].w);
-      if distance>SYS_SIZE*SYS_SIZE then result*=exp(-0.5*(distance*(1/SYS_SIZE*SYS_SIZE)-1));
+      dx:=sqr(x-0.5)+sqr(y);
+      dy:=sqr(x)+sqr(y-0.5);
+      result[0]:=straightAttraction(x-0.5,y)[0];
+      result[1]:=straightAttraction(x,y-0.5)[1];
+      if (dx>SYS_SIZE*SYS_SIZE) and (SYMMETRIC_CONTINUATION>0) then result[0]*=exp(-0.5*(dx*(1/SYS_SIZE*SYS_SIZE)-1));
+      if (dy>SYS_SIZE*SYS_SIZE) and (SYMMETRIC_CONTINUATION>0) then result[1]*=exp(-0.5*(dy*(1/SYS_SIZE*SYS_SIZE)-1));
     end;
 
   VAR ix,iy:longint;
@@ -64,26 +48,22 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
       log.append('(Re)initializing attraction factors').appendLineBreak;
 
       for ix:=-SYS_SIZE+1 to SYS_SIZE-1 do for iy:=-SYS_SIZE+1 to SYS_SIZE-1 do begin
-        //Due to symmetry considerations, only half of the entries have to be calculated
-        if (ix>0) or (ix=0) and (iy>0)
-        then begin
-          cachedAttraction[ix,iy,0]:=-cachedAttraction[-ix,-iy,0];
-          cachedAttraction[ix,iy,1]:=-cachedAttraction[-ix,-iy,1];
-        end else begin
-          temp:=zeroVec;
-          for symX:=-SYMMETRIC_CONTINUATION to SYMMETRIC_CONTINUATION do
-          for symY:=-SYMMETRIC_CONTINUATION to SYMMETRIC_CONTINUATION do
-            temp+=calculateAttraction(ix+symX*SYS_SIZE,iy+symY*SYS_SIZE);
-          cachedAttraction[ix,iy]:=temp;
-        end;
+        temp:=zeroVec;
+        for symX:=-SYMMETRIC_CONTINUATION to SYMMETRIC_CONTINUATION do
+        for symY:=-SYMMETRIC_CONTINUATION to SYMMETRIC_CONTINUATION do
+          temp+=calculateAttraction(ix+symX*SYS_SIZE,iy+symY*SYS_SIZE);
+        cachedAttraction[ix,iy]:=temp;
       end;
+
     end;
     if not(attractionInitialized) then begin
       for ix:=0 to SYS_SIZE-1 do begin
         box[ix]:=[];
         for iy:=ix-ATTRACTION_RANGE+SYS_SIZE to ix+ATTRACTION_RANGE+SYS_SIZE do include(box[ix],byte(iy mod SYS_SIZE));
       end;
-      for ix:=0 to SYS_SIZE-1 do sinus_table[ix]:=sin(ix*2*pi/SYS_SIZE);
+      if SYMMETRIC_CONTINUATION>0
+      then for ix:=0 to SYS_SIZE-1 do sinus_table[ix]:=sin(ix*2*pi/SYS_SIZE)
+      else for ix:=0 to SYS_SIZE-1 do sinus_table[ix]:=cos(ix*  pi/SYS_SIZE);
     end;
     attractionInitialized:=true;
   end;
@@ -101,20 +81,20 @@ DESTRUCTOR T_cellSystem.destroy;
 
 FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
   VAR newState:T_systemState;
-      staggeredAcceleration,acceleration:T_vectorField;
+      staggeredAcceleration:T_vectorField;
 
   PROCEDURE setGravAcceleration;
     VAR i,j,oi,oj:longint;
     begin
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do acceleration[i,j]:=zeroVec;
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do staggeredAcceleration[i,j]:=zeroVec;
       if LIMITED_RANGE_ATTRACTION then begin
         for i:=0 to SYS_SIZE-1 do for oi:=0 to SYS_SIZE-1 do if byte(oi and 255) in box[i] then
         for j:=0 to SYS_SIZE-1 do for oj:=0 to SYS_SIZE-1 do if byte(oj and 255) in box[j] then
-          acceleration[i,j]+=cachedAttraction[oi-i,oj-j]*value[oi,oj].mass;
+          staggeredAcceleration[i,j]+=cachedAttraction[oi-i,oj-j]*value[oi,oj].mass;
       end else begin
         for i:=0 to SYS_SIZE-1 do for oi:=0 to SYS_SIZE-1 do
         for j:=0 to SYS_SIZE-1 do for oj:=0 to SYS_SIZE-1 do
-          acceleration[i,j]+=cachedAttraction[oi-i,oj-j]*value[oi,oj].mass;
+          staggeredAcceleration[i,j]+=cachedAttraction[oi-i,oj-j]*value[oi,oj].mass;
       end;
     end;
 
@@ -151,7 +131,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
 
       if (REPULSION_LINEAR=0) AND (REPULSION_QUADRATIC=0)
       then begin
-        for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do staggeredAcceleration[i,j]:=deltaV;
+        for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do staggeredAcceleration[i,j]+=deltaV;
       end else begin
         for i:=0 to SYS_SIZE-1 do begin
           ip:=(i+1) and mask;
@@ -169,10 +149,10 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
             local[ 0,-1]:=local[ 0,0]; local[ 0,0]:=local[ 0,1]; local[ 0,1]:=cap(value[i ,jp].mass);
             local[ 1,-1]:=local[ 1,0]; local[ 1,0]:=local[ 1,1]; local[ 1,1]:=cap(value[ip,jp].mass);
 
-            staggeredAcceleration[i,j,0]:=deltaV[0]+0.8*(local[0, 0]-local[1, 0])
+            staggeredAcceleration[i,j,0]+=deltaV[0]+0.8*(local[0, 0]-local[1, 0])
                                                    +0.1*(local[0, 1]-local[1, 1])
                                                    +0.1*(local[0,-1]-local[1,-1]);
-            staggeredAcceleration[i,j,1]:=deltaV[1]+0.8*(local[ 0,0]-local[ 0,1])
+            staggeredAcceleration[i,j,1]+=deltaV[1]+0.8*(local[ 0,0]-local[ 0,1])
                                                    +0.1*(local[ 1,0]-local[ 1,1])
                                                    +0.1*(local[-1,0]-local[-1,1]);
           end;
@@ -196,22 +176,21 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
         v:=(p[0]*p[0]+p[1]*p[1]+(a[0]*a[0]+a[1]*a[1])*dt*dt)/(mass*mass);
         if v>vMax then vMax:=v;
       end;
-      vMax:=sqrt(vMax);  //vMax= vMax
+      vMax:=sqrt(vMax);
 
       aMax:=epsilon;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do if value[i,j].mass>UPPER_C10_LEVEL then begin
-        a:=sqr(acceleration[i,j,0])+sqr(acceleration[i,j,1]);
+        a:=sqr(staggeredAcceleration[i,j,0])+sqr(staggeredAcceleration[i,j,1]);
         if a>aMax then aMax:=a;
       end;
       aMax:=sqrt(aMax);
 
       dadxMax:=epsilon;
-      if (REPULSION_LINEAR<>0) or (REPULSION_QUADRATIC<>0) then
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do if value[i,j].mass>UPPER_C1_LEVEL then begin
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do if value[i,j].mass>UPPER_C10_LEVEL then begin
         a:=abs(staggeredAcceleration[i,j,0]-staggeredAcceleration[(i+1) and mask,j,0]); if a>dadxMax then dadxMax:=a;
         a:=abs(staggeredAcceleration[i,j,1]-staggeredAcceleration[i,(j+1) and mask,1]); if a>dadxMax then dadxMax:=a;
       end;
-      aMax:=max(aMax,dadxMax*4);
+      aMax:=max(aMax,dadxMax);
 
       result:=min(MAX_TRANSPORT_RANGE/vMax,
                   sqrt(MAX_TRANSPORT_RANGE*2/aMax));
@@ -272,15 +251,14 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
         end;
 
 
-        acc:=acceleration[i,j];
         f:=(DIFFUSION_BASE+DIFFUSION_BY_VELOCITY*sqrt(sqr(v[0])+sqr(v[1])))*dtEff;
         if f>2.5 then f:=2.5 else if f<0 then f:=0;
 
         //a = d²x/dt²
-        ax0:=acc[0]+staggeredAcceleration[(i+mask) and mask,j,0];
-        ax1:=acc[0]+staggeredAcceleration[ i               ,j,0];
-        ay0:=acc[1]+staggeredAcceleration[i,(j+mask) and mask,1];
-        ay1:=acc[1]+staggeredAcceleration[i, j               ,1];
+        ax0:=staggeredAcceleration[(i+mask) and mask,j,0];
+        ax1:=staggeredAcceleration[ i               ,j,0];
+        ay0:=staggeredAcceleration[i,(j+mask) and mask,1];
+        ay1:=staggeredAcceleration[i, j               ,1];
 
         //j = d³x/dt³ = (a(t_current)-a(t_prev))/(t_current-t_prev) = (a(t_current)-a(t_prev))*jerkFactor
         jx0:=(ax0-value[i,j].a[0])*jerkFactor;
@@ -302,14 +280,31 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
         y0 :=j-  f+dtEff*(v[1]+dtEff*0.5*(ay0+jy0*dtEff*0.33333333));
         y1 :=j+1+f+dtEff*(v[1]+dtEff*0.5*(ay1+jy1*dtEff*0.33333333));
 
+        if x1<x0+1 then begin x0:=(x0+x1)*0.5-0.5; x1:=x0+1; end;
+        if y1<y0+1 then begin y0:=(y0+y1)*0.5-0.5; y1:=y0+1; end;
         if SYMMETRIC_CONTINUATION<=0 then begin
-          if x0<0        then begin x0:=0       ; if x1<x0+1 then x1:=x0+1; vx0:= abs(vx0); end;
-          if x1>SYS_SIZE then begin x1:=SYS_SIZE; if x0>x1-1 then x0:=x1-1; vx1:=-abs(vx1); end;
-          if y0<0        then begin y0:=0       ; if y1<y0+1 then y1:=y0+1; vy0:= abs(vy0); end;
-          if y1>SYS_SIZE then begin y1:=SYS_SIZE; if y0>y1-1 then y0:=y1-1; vy1:=-abs(vy1); end;
-        end else begin
-          if x1<x0+1 then begin x0:=(x0+x1)*0.5-0.5; x1:=x0+1; end;
-          if y1<y0+1 then begin y0:=(y0+y1)*0.5-0.5; y1:=y0+1; end;
+          if i=0 then begin
+            ax1:=abs(ax1); ax0:=ax1;
+            vx1:=abs(vx1); vx0:=vx1;
+            x0 :=x1-1;
+          end else if i=mask then begin
+            ax0:=-abs(ax0); ax1:=ax0;
+            vx0:=-abs(vx0); vx1:=vx0;
+            x1 :=x0+1;
+          end;
+          if j=0 then begin
+            ay1:=abs(ay1); ay0:=ay1;
+            vy1:=abs(vy1); vy0:=vy1;
+            y0:=y1-1;
+          end else if j=mask then begin
+            ay0:=-abs(ay0); ay1:=ay0;
+            vy0:=-abs(vy0); vy1:=vy0;
+            y1:=y0+1;
+          end;
+          if x0<0        then begin x0:=abs(x0)                  ; if x1<x0+1 then x1:=x0+1; vx0:= abs(vx0); vx1:= abs(vx1);  end else
+          if x1>SYS_SIZE then begin x1:=SYS_SIZE-abs(SYS_SIZE-x1); if x0>x1-1 then x0:=x1-1; vx1:=-abs(vx1); vx0:=-abs(vx0);  end;
+          if y0<0        then begin y0:=abs(y0)                  ; if y1<y0+1 then y1:=y0+1; vy0:= abs(vy0); vy1:= abs(vy1);  end else
+          if y1>SYS_SIZE then begin y1:=SYS_SIZE-abs(SYS_SIZE-y1); if y0>y1-1 then y0:=y1-1; vy1:=-abs(vy1); vx0:=-abs(vy0);  end;
         end;
 
         value[i,j].mass*=1/((x1-x0)*(y1-y0));
@@ -347,6 +342,13 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
       value:=newState;
     end;
 
+  PROCEDURE removeAccelerationAcrossBoundary;
+    VAR i:longint;
+    begin
+      for i:=0 to SYS_SIZE-1 do staggeredAcceleration[SYS_SIZE-1,i,0]:=0;
+      for i:=0 to SYS_SIZE-1 do staggeredAcceleration[i,SYS_SIZE-1,1]:=0;
+    end;
+
   VAR subStepsTaken:longint=0;
       dtEff:double;
       i,j:longint;
@@ -361,8 +363,10 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
     dtRest:=dt;
     while dtRest>0 do begin
       setGravAcceleration;
-      addBackgroundAcceleration(timeStepIndex,acceleration);
       addPressureAccelerationAndDrift;
+      addBackgroundAcceleration(timeStepIndex,staggeredAcceleration);
+      if SYMMETRIC_CONTINUATION<=0 then removeAccelerationAcrossBoundary;
+
       dtEff:=calcTimeStep;
       transport(dtEff);
       dtRest-=dtEff;

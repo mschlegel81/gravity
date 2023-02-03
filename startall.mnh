@@ -158,7 +158,10 @@ watcher(filename:String)->{begin
       local it:=fileLineIterator(filename,60);
       local n:=void;
       while(!isVoid(n:=it()),begin
-        trail:=trailing(trail|("\t"&n),trailSize);
+        trail:=
+        (n.matches('Calculation thread stopped')
+        ? ["\t"&n]
+        : trailing(trail|("\t"&n),trailSize));
       end);
       trail|=("\t"&'...timed out');
       timedOut:=true;
@@ -272,6 +275,6 @@ main('w')->begin
     : void;
     printDirect("\rCPU ",BLOCKS[getCpuLoadHistory(cpuWidth)].join,getCpuLoadHistory.orElse(['?']).trailing,'% ');
 
-    anyChanged ? sleepTime:=0.2 : sleep(sleepTime:=1-(1-sleepTime)*0.9);
+    sleep(anyChanged ? sleepTime:=0.5 : sleepTime:=2-(2-sleepTime)*0.9);
   end);
 end;

@@ -190,7 +190,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
         a:=abs(staggeredAcceleration[i,j,0]-staggeredAcceleration[(i+1) and mask,j,0]); if a>dadxMax then dadxMax:=a;
         a:=abs(staggeredAcceleration[i,j,1]-staggeredAcceleration[i,(j+1) and mask,1]); if a>dadxMax then dadxMax:=a;
       end;
-      aMax:=max(aMax,dadxMax);
+      aMax:=max(aMax,dadxMax*2);
 
       result:=min(MAX_TRANSPORT_RANGE/vMax,
                   sqrt(MAX_TRANSPORT_RANGE*2/aMax));
@@ -205,10 +205,10 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
       else result:=dtRest/ceil(dtRest/result);
     end;
 
+  VAR simTime:double;
   PROCEDURE transport(CONST dtEff:double);
     CONST mask=SYS_SIZE-1;
-    VAR simTime:double;
-        i,j,ti,tj:longint;
+    VAR i,j,ti,tj:longint;
         x0,x1,y0,y1,
         cellX0,cellX1,cellY0,cellY1,
         wx,wy:double;
@@ -219,7 +219,6 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
         jx0,jx1,jy0,jy1:double;
         jerkFactor:double;
     begin
-      simTime:=(timeStepIndex+1)*dt-dtRest;
       jerkFactor:=1/(simTime-prevAccelTime);
       prevAccelTime:=simTime;
 
@@ -280,6 +279,17 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
         y0 :=j-  f+dtEff*(v[1]+dtEff*0.5*(ay0+jy0*dtEff*0.33333333));
         y1 :=j+1+f+dtEff*(v[1]+dtEff*0.5*(ay1+jy1*dtEff*0.33333333));
 
+        if x1<x0 then begin
+          f:= x0;  x0 :=x1;  x1:=f;
+          f:=vx0; vx0:=vx1; vx1:=f;
+          f:=ax0; ax0:=ax1; ax1:=f;
+        end;
+        if y1<y0 then begin
+          f:= y0;  x0 :=y1;  y1:=f;
+          f:=vy0; vx0:=vy1; vy1:=f;
+          f:=ay0; ax0:=ay1; ay1:=f;
+        end;
+
         if x1<x0+1 then begin x0:=(x0+x1)*0.5-0.5; x1:=x0+1; end;
         if y1<y0+1 then begin y0:=(y0+y1)*0.5-0.5; y1:=y0+1; end;
         if SYMMETRIC_CONTINUATION<=0 then begin
@@ -302,20 +312,18 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
             y1:=y0+1;
           end;
           if x0<0        then begin x0:=abs(x0)                  ; if x1<x0+1 then x1:=x0+1; vx0:= abs(vx0); vx1:= abs(vx1);  end else
-          if x1>SYS_SIZE then begin x1:=SYS_SIZE-abs(SYS_SIZE-x1); if x0>x1-1 then x0:=x1-1; vx1:=-abs(vx1); vx0:=-abs(vx0);  end;
+          if x1>SYS_SIZE then begin x1:=SYS_SIZE-abs(SYS_SIZE-x1); if x0>x1-1 then x0:=x1-1; vx1:=-abs(vx1); vx0:=-abs(vx0);  end else
+          if x1<x0+1     then begin x0:=(x0+x1)*0.5-0.5; x1:=x0+1; end;
           if y0<0        then begin y0:=abs(y0)                  ; if y1<y0+1 then y1:=y0+1; vy0:= abs(vy0); vy1:= abs(vy1);  end else
-          if y1>SYS_SIZE then begin y1:=SYS_SIZE-abs(SYS_SIZE-y1); if y0>y1-1 then y0:=y1-1; vy1:=-abs(vy1); vx0:=-abs(vy0);  end;
+          if y1>SYS_SIZE then begin y1:=SYS_SIZE-abs(SYS_SIZE-y1); if y0>y1-1 then y0:=y1-1; vy1:=-abs(vy1); vx0:=-abs(vy0);  end else
+          if y1<y0+1     then begin y0:=(y0+y1)*0.5-0.5; y1:=y0+1; end;
         end;
 
         value[i,j].mass*=1/((x1-x0)*(y1-y0));
-        vx0*=value[i,j].mass;
-        vx1*=value[i,j].mass; vx1:=(vx1-vx0)/(x1-x0);
-        vy0*=value[i,j].mass;
-        vy1*=value[i,j].mass; vy1:=(vy1-vy0)/(y1-y0);
-        ax0*=value[i,j].mass;
-        ax1*=value[i,j].mass; ax1:=(ax1-ax0)/(x1-x0);
-        ay0*=value[i,j].mass;
-        ay1*=value[i,j].mass; ay1:=(ay1-ay0)/(y1-y0);
+        vx0*=value[i,j].mass; vx1*=value[i,j].mass; vx1:=(vx1-vx0)/(x1-x0);
+        vy0*=value[i,j].mass; vy1*=value[i,j].mass; vy1:=(vy1-vy0)/(y1-y0);
+        ax0*=value[i,j].mass; ax1*=value[i,j].mass; ax1:=(ax1-ax0)/(x1-x0);
+        ay0*=value[i,j].mass; ay1*=value[i,j].mass; ay1:=(ay1-ay0)/(y1-y0);
 
         for ti:=floor(x0) to floor(x1+1) do begin
           //intersection of intervals [ti,ti+1] and [x0,x1]
@@ -364,7 +372,8 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
     while dtRest>0 do begin
       setGravAcceleration;
       addPressureAccelerationAndDrift;
-      addBackgroundAcceleration(timeStepIndex,staggeredAcceleration);
+      simTime:=(timeStepIndex+1)*dt-dtRest;
+      addBackgroundAcceleration(simTime/dt,staggeredAcceleration);
       if SYMMETRIC_CONTINUATION<=0 then removeAccelerationAcrossBoundary;
 
       dtEff:=calcTimeStep;

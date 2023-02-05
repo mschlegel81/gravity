@@ -26,7 +26,7 @@ VAR REGROWTH_FACTOR:double=1E-3;
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
-PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:longint; VAR accel:T_vectorField);
+PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel:T_vectorField);
 IMPLEMENTATION
 VAR forceShift:double;
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
@@ -66,7 +66,7 @@ FUNCTION getInitialState: T_systemState;
     end;
   end;
 
-PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:longint; VAR accel: T_vectorField);
+PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel: T_vectorField);
   begin
   end;
 

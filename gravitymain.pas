@@ -129,21 +129,17 @@ PROCEDURE TGravMainForm.FormCreate(Sender: TObject);
     if hasPositionParameter(positionIndex) then begin
       Left:=0;
       Top :=0;
-      while (top+Height<screen.Height) and (positionIndex>0) do begin
+      while (positionIndex>0) do begin
         while (left+2*Width+10<Screen.Width) and (positionIndex>0) do begin
           left:=left+width+5;
           dec(positionIndex);
         end;
         if positionIndex>0 then begin;
           top:=top+height+40;
+          if top+height>screen.Height then top:=0;
           left:=0;
           dec(positionIndex);
         end;
-      end;
-      if positionIndex>0 then begin
-        left:=0;
-        top :=0;
-        WindowState:=wsMinimized;
       end;
     end else begin
       {$ifndef debugMode}

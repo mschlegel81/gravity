@@ -25,8 +25,9 @@ CONST
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
-PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:longint; VAR accel:T_vectorField);
+PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel:T_vectorField);
 IMPLEMENTATION
+USES math;
 
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
   begin
@@ -61,20 +62,20 @@ FUNCTION getInitialState: T_systemState;
     end;
   end;
 
-PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:longint; VAR accel: T_vectorField);
+PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel: T_vectorField);
   VAR i:longint;
   begin
     for i:=0 to SYS_SIZE-1 do begin
-	  accel[0         ,i,0]+=20;
-	  accel[1         ,i,0]+=10;
-	  accel[SYS_SIZE-2,i,0]-=20;
-	  accel[SYS_SIZE-3,i,0]-=10;
+	  accel[0         ,i,0]:=max(accel[0         ,i,0],0)+10;
+	  accel[1         ,i,0]:=max(accel[1         ,i,0],0)+ 5;
+	  accel[SYS_SIZE-2,i,0]:=min(accel[SYS_SIZE-2,i,0],0)-10;
+	  accel[SYS_SIZE-3,i,0]:=min(accel[SYS_SIZE-3,i,0],0)- 5;
 	end;  
     for i:=0 to SYS_SIZE-1 do begin
-	  accel[i,0         ,1]+=20;
-	  accel[i,1         ,1]+=10;	  
-	  accel[i,SYS_SIZE-2,1]-=20;
-	  accel[i,SYS_SIZE-3,1]-=10;
+	  accel[i,0         ,1]:=max(accel[i,0         ,1],0)+10;
+	  accel[i,1         ,1]:=max(accel[i,1         ,1],0)+ 5;	  
+	  accel[i,SYS_SIZE-2,1]:=min(accel[i,SYS_SIZE-2,1],0)-10;
+	  accel[i,SYS_SIZE-3,1]:=min(accel[i,SYS_SIZE-3,1],0)- 5;
 	end;  
   end;
 

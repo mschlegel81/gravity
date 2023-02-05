@@ -2,63 +2,101 @@ UNIT customization;
 INTERFACE
 USES vectors,commandLineHandling;
 CONST
-  SYMMETRIC_CONTINUATION=20;
+  SYMMETRIC_CONTINUATION=0;
   dt                    =0.05;
   GRID_SIZE             =1;
 
-  LIMITED_RANGE_ATTRACTION=false;
-  ATTRACTION_RANGE        =256;
-
-  DRIFT_TO_CENTER=true;
+  LIMITED_RANGE_ATTRACTION=true;
+  ATTRACTION_RANGE        =0;
 
   REPULSION_THRESHOLD=0;
-  REPULSION_LINEAR   =0.5;
+  REPULSION_LINEAR   =50;
   REPULSION_QUADRATIC=0;
 
-  ANNIHILATION_THRESHOLD=5;
-  ANNIHILATION_FACTOR   =1E-4;
+  ANNIHILATION_THRESHOLD=100;
+  ANNIHILATION_FACTOR   =0;  
+  REGROWTH_FACTOR       =0;
 
-  REGROWTH_FACTOR=0;
-  DIFFUSION_BY_VELOCITY=0.02;
-  DIFFUSION_BASE       =0.05;
+  DIFFUSION_BY_VELOCITY=0;
+  DIFFUSION_BASE       =0;  
+  
+  DRIFT_TO_CENTER=false;
+
   
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
-FUNCTION straightAttraction(CONST rx,ry:TmyFloat):T_2dVector;
+FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
-PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:longint; VAR accel:T_vectorField);
+PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel:T_vectorField);
 IMPLEMENTATION
-
+   
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
-  begin
+  begin     	
     result:=false;
   end;
 
-FUNCTION straightAttraction(CONST rx,ry:TmyFloat):T_2dVector;
-  VAR d:TmyFloat;
+FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;    
   begin
-    d:=sqrt(rx*rx+ry*ry);
-    d:=1/(1E-10+d*sqr(d));
-    result[0]:=rx*d;
-    result[1]:=ry*d;
+    result:=zeroVec;
   end;
-
+	
 FUNCTION getInitialState: T_systemState;
-  VAR i,j:longint;
-      massFactor:double;
+  VAR i,j:longint;      
   begin
     case initialDensityVariant of
-      id_low:  massFactor:= 0.1;
-      id_high: massFactor:= 1;
-      else     massFactor:=10;
-    end;
-    for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with result[i,j] do begin
-      mass:=massFactor+0.001*random;
-      p:=zeroVec;
+      id_low:  
+	    for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with result[i,j] do begin
+	      if i+i<SYS_SIZE then mass:=1+0.001*random else mass:=0;
+          p:=zeroVec;	  
+        end; 	  
+      id_high: 
+	    for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with result[i,j] do begin
+	      if j>i then mass:=1+0.001*random else mass:=0;
+          p:=zeroVec;	  
+        end; 	  
+      else for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with result[i,j] do begin
+	    if sqr(i/SYS_SIZE-0.4)+sqr(j/SYS_SIZE-0.25)<sqr(0.1) then mass:=20+0.001*random else mass:=0;
+        p:=zeroVec;	  
+      end; 	  
     end;
   end;
 
-PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:longint; VAR accel: T_vectorField);
+PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel: T_vectorField);  
+  VAR i,j:longint;
+      w0,w1,n:double; 
+	  d:T_2dVector;
   begin
+    if (timeStepIndex<=1000)
+	then for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do accel[i,j,1]+=50
+	else begin
+	  if (round(timeStepIndex) mod 2000<1000) then begin
+	    w0:=50;
+		w1:=0;	  
+	  end else begin
+	    w0:=0;
+		w1:=50;
+	  end;
+	  for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
+		d[0]:=(i+0.5)/SYS_SIZE-0.5;
+		d[1]:=(j    )/SYS_SIZE-0.5;
+		n:=sqrt(d[0]*d[0]+d[1]*d[1]);
+		if n<0.15 then d*=1000/n
+		          else begin
+		  d*=-w1/n;	      		  
+		end;  
+		accel[i,j,0]+=d[0];
+		
+		d[0]:=(i    )/SYS_SIZE-0.5;
+		d[1]:=(j+0.5)/SYS_SIZE-0.5;
+		n:=sqrt(d[0]*d[0]+d[1]*d[1]);
+		if n<0.15 then d*=1000/n
+		          else begin
+		  d*=-w1/n;	         
+		end;  
+		if i<=SYS_SIZE*2 div 32
+		then accel[i,j,1]+=d[1]-w0
+		else accel[i,j,1]+=d[1]+w0;
+      end;
+	end;
   end;
 
 end.

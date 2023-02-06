@@ -166,35 +166,26 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
     end;
 
   CONST DT_MIN=dt/200; //not more than 200 sub steps
-        MAX_TRANSPORT_RANGE=0.7141*GRID_SIZE;
+        MAX_TRANSPORT_RANGE=GRID_SIZE;
         SPEED_CAP=0.5*MAX_TRANSPORT_RANGE/DT_MIN;
   VAR capping:boolean=false;
       dtRest:double;
   FUNCTION calcTimeStep:double;
     CONST mask=SYS_SIZE-1;
     VAR i,j:longint;
-        vMax,v,a,dadxMax,aMax:double;
+        vMax,v:double;
     begin
       result:=dtRest;
       vMax:=epsilon;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do if mass>UPPER_C10_LEVEL then begin
-        v:=(p[0]*p[0]+p[1]*p[1]+(a[0]*a[0]+a[1]*a[1])*dt*dt)/(mass*mass);
+        v:=(abs(p[0]+a[0]*dt)+
+            abs(p[1]+a[1]*dt))/mass;
         if v>vMax then vMax:=v;
       end;
-      vMax:=sqrt(vMax);
+      //vMax:=sqrt(vMax);
 
-      aMax:=epsilon;
-      dadxMax:=epsilon;
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do if value[i,j].mass>UPPER_C10_LEVEL then begin
-        a:=sqr(staggeredAcceleration[i,j,0])+sqr(staggeredAcceleration[i,j,1]);
-        if a>aMax then aMax:=a;
-        a:=abs(staggeredAcceleration[i,j,0]-staggeredAcceleration[(i+1) and mask,j,0]); if a>dadxMax then dadxMax:=a;
-        a:=abs(staggeredAcceleration[i,j,1]-staggeredAcceleration[i,(j+1) and mask,1]); if a>dadxMax then dadxMax:=a;
-      end;
-      aMax:=max(sqrt(aMax),dadxMax*2);
 
-      result:=min(MAX_TRANSPORT_RANGE/vMax,
-                  sqrt(MAX_TRANSPORT_RANGE*2/aMax));
+      result:=MAX_TRANSPORT_RANGE/vMax;
 
       if result<DT_MIN then begin
         result:=DT_MIN;
@@ -214,51 +205,12 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
         cellX0,cellX1,cellY0,cellY1,
         wx,wy:double;
         acc,v:T_2dVector;
+
         f,
         vx0,vx1,vy0,vy1,
         ax0,ax1,ay0,ay1,
         jx0,jx1,jy0,jy1:double;
         jerkFactor:double;
-    PROCEDURE throwPixel(CONST ti,tj:double; CONST m,vx,vy,ax,ay:double); inline;
-      VAR wx,wy,fraction:double;
-          i,j:longint;
-      begin
-        i:=floor(ti); wx:=ti-i; i:=i and mask;
-        j:=floor(tj); wy:=tj-j; j:=j and mask;
-
-        with newState[i,j] do begin
-          fraction:=m*(1-wx)*(1-wy);
-          mass+=   fraction;
-          p[0]+=vx*fraction;
-          p[1]+=vy*fraction;
-          a[0]+=ax*fraction;
-          a[1]+=ay*fraction;
-        end;
-        with newState[i,(j+1) and mask] do begin
-          fraction:=m*(1-wx)*wy;
-          mass+=   fraction;
-          p[0]+=vx*fraction;
-          p[1]+=vy*fraction;
-          a[0]+=ax*fraction;
-          a[1]+=ay*fraction;
-        end;
-        with newState[(i+1) and mask,j] do begin
-          fraction:=m*wx*(1-wy);
-          mass+=   fraction;
-          p[0]+=vx*fraction;
-          p[1]+=vy*fraction;
-          a[0]+=ax*fraction;
-          a[1]+=ay*fraction;
-        end;
-        with newState[(i+1) and mask,(j+1) and mask] do begin
-          fraction:=m*wx*wy;
-          mass+=   fraction;
-          p[0]+=vx*fraction;
-          p[1]+=vy*fraction;
-          a[0]+=ax*fraction;
-          a[1]+=ay*fraction;
-        end;
-      end;
 
     begin
       jerkFactor:=dtEff*0.5/(simTime-prevAccelTime);
@@ -306,80 +258,154 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
         ax0:=staggeredAcceleration[(i+mask) and mask,j,0];
         jx0:=(ax0-acc[0])*jerkFactor;
         vx0:=             v[0]+dtEff    *(ax0+jx0);
-        x0 :=i  -f+dtEff*(v[0]+dtEff*0.5*(ax0+jx0*0.66666666));
+        x0 :=   -f+dtEff*(v[0]+dtEff*0.5*(ax0+jx0*0.66666666));
 
         ax1:=staggeredAcceleration[i,j,0];
         jx1:=(ax1-acc[0])*jerkFactor;
         vx1:=v[0] +dtEff*(ax1 +jx1);
-        x1 :=i+1+f+dtEff*(v[0]+dtEff*0.5*(ax1+jx1*0.66666666));
+        x1 :=    f+dtEff*(v[0]+dtEff*0.5*(ax1+jx1*0.66666666));
 
         ay0:=staggeredAcceleration[i,(j+mask) and mask,1];
         jy0:=(ay0-acc[1])*jerkFactor;
         vy0:=v[1] +dtEff*(ay0 +jy0);
-        y0 :=j-  f+dtEff*(v[1]+dtEff*0.5*(ay0+jy0*0.66666666));
+        y0 :=    f+dtEff*(v[1]+dtEff*0.5*(ay0+jy0*0.66666666));
 
         ay1:=staggeredAcceleration[i, j               ,1];
         jy1:=(ay1-acc[1])*jerkFactor;
         vy1:=v[1] +dtEff*(ay1 +jy1);
-        y1 :=j+1+f+dtEff*(v[1]+dtEff*0.5*(ay1+jy1*0.66666666));
+        y1 :=    f+dtEff*(v[1]+dtEff*0.5*(ay1+jy1*0.66666666));
 
-        if x1<x0+1 then begin x0:=(x0+x1)*0.5-0.5; x1:=x0+1; end;
-        if y1<y0+1 then begin y0:=(y0+y1)*0.5-0.5; y1:=y0+1; end;
         if SYMMETRIC_CONTINUATION<=0 then begin
-          if i=0 then begin
-            ax1:=abs(ax1); ax0:=ax1;
-            vx1:=abs(vx1); vx0:=vx1;
-            x0 :=x1-1;
-          end else if i=mask then begin
-            ax0:=-abs(ax0); ax1:=ax0;
-            vx0:=-abs(vx0); vx1:=vx0;
-            x1 :=x0+1;
-          end;
-          if j=0 then begin
-            ay1:=abs(ay1); ay0:=ay1;
-            vy1:=abs(vy1); vy0:=vy1;
-            y0:=y1-1;
-          end else if j=mask then begin
-            ay0:=-abs(ay0); ay1:=ay0;
-            vy0:=-abs(vy0); vy1:=vy0;
-            y1:=y0+1;
-          end;
-          if x0<0        then begin x0:=abs(x0)                  ; if x1<x0+1 then x1:=x0+1; vx0:= abs(vx0); vx1:= abs(vx1);  end else
-          if x1>SYS_SIZE then begin x1:=SYS_SIZE-abs(SYS_SIZE-x1); if x0>x1-1 then x0:=x1-1; vx1:=-abs(vx1); vx0:=-abs(vx0);  end else
-          if x1<x0+1     then begin x0:=(x0+x1)*0.5-0.5; x1:=x0+1; end;
-          if y0<0        then begin y0:=abs(y0)                  ; if y1<y0+1 then y1:=y0+1; vy0:= abs(vy0); vy1:= abs(vy1);  end else
-          if y1>SYS_SIZE then begin y1:=SYS_SIZE-abs(SYS_SIZE-y1); if y0>y1-1 then y0:=y1-1; vy1:=-abs(vy1); vx0:=-abs(vy0);  end else
-          if y1<y0+1     then begin y0:=(y0+y1)*0.5-0.5; y1:=y0+1; end;
+          if (i=0   ) and (x0<0) then x0:=0;
+          if (i=mask) and (x1>0) then x1:=0;
+          if (j=0   ) and (y0<0) then y0:=0;
+          if (j=mask) and (y1>0) then y1:=0;
+        end;
+        if x0>0 then x0:=0;
+        if x1<0 then x1:=0;
+        if y0>0 then y0:=0;
+        if y1<0 then y1:=0;
+        f:=1+x0+y0-x1-y1; //the part that stays here...
+        if f<0 then begin
+          f:=1/(-x0-y0+x1+y1);
+          x0*=f;
+          x1*=f;
+          y0*=f;
+          y1*=f;
+          f:=0;
         end;
 
-        value[i,j].mass*=1/((x1-x0)*(y1-y0));
-        vx0*=value[i,j].mass; vx1*=value[i,j].mass; vx1:=(vx1-vx0)/(x1-x0);
-        vy0*=value[i,j].mass; vy1*=value[i,j].mass; vy1:=(vy1-vy0)/(y1-y0);
-        ax0*=value[i,j].mass; ax1*=value[i,j].mass; ax1:=(ax1-ax0)/(x1-x0);
-        ay0*=value[i,j].mass; ay1*=value[i,j].mass; ay1:=(ay1-ay0)/(y1-y0);
-        for ti:=floor(x0) to floor(x1+1) do begin
-          //intersection of intervals [ti,ti+1] and [x0,x1]
-          // = [max(ti,x0),min(x1,ti+1)] -> weight =
-          cellX0:=max(x0,ti);
-          cellX1:=min(x1,ti+1);
-          wx:=cellX1-cellX0;
-          f:=((cellX0+cellX1)*0.5-x0);
-          v  [0]:=f*vx1+vx0;
-          acc[0]:=f*ax1+ax0;
-          if wx>0 then for tj:=floor(y0) to floor(y1+1) do begin
-            cellY0:=max(y0,tj);
-            cellY1:=min(y1,tj+1);
-            wy:=(cellY1-cellY0)*wx;
-            if wy>0 then with newState[ti and mask,tj and mask] do begin
-              f:=((cellY0+cellY1)*0.5-y0);
-              v  [1]:=f*vy1+vy0;
-              acc[1]:=f*ay1+ay0;
-              mass+=value[i,j].mass*wy;
-              p   +=v              *wy;
-              a   +=acc            *wy;
-            end;
-          end;
+        v[0]:=(vx0+vx1)*0.5;
+        v[1]:=(vy0+vy1)*0.5;
+        acc[0]:=(ax0+ax1)*0.5;
+        acc[1]:=(ay0+ay1)*0.5;
+
+        if x0<0 then with newState[(i+mask) and mask,j] do begin
+          x0*=-value[i,j].mass;
+          mass+=       x0;
+          p+=v*x0;
+          a+=acc*x0;
+          //p[0]+=vx0   *x0;
+          //p[1]+=v[1]  *x0;
+          //a[0]+=ax0   *x0;
+          //a[1]+=acc[1]*x0;
         end;
+        if y0<0 then with newState[i,(j+mask) and mask] do begin
+          y0*=-value[i,j].mass;
+          mass+=       y0;
+          p+=v*y0;
+          a+=acc*y0;
+          //p[0]+=v[0]  *y0;
+          //p[1]+=vy0   *y0;
+          //a[0]+=acc[0]*y0;
+          //a[1]+=ay0   *y0;
+        end;
+        if f>0 then with newState[i,j] do begin
+          f*=value[i,j].mass;
+          mass+= f;
+          p+=v  *f;
+          a+=acc*f;
+        end;
+        if y1>0 then with newState[i,(j+1) and mask] do begin
+          y1*=value[i,j].mass;
+          mass+=       y1;
+          p+=v*y1;
+          a+=acc*y1;
+          //p[0]+=v[0]  *y1;
+          //p[1]+=vy1   *y1;
+          //a[0]+=acc[0]*y1;
+          //a[1]+=ay1   *y1;
+        end;
+        if x1>0 then with newState[(i+1) and mask,j] do begin
+          x1*=value[i,j].mass;
+          mass+=       x1;
+          p+=v*x1;
+          a+=acc*x1;
+          //p[0]+=vx1   *x1;
+          //p[1]+=v[1]  *x1;
+          //a[0]+=ax1   *x1;
+          //a[1]+=acc[1]*x1;
+        end;
+
+
+
+        //if x1<x0+1 then begin x0:=(x0+x1)*0.5-0.5; x1:=x0+1; end;
+        //if y1<y0+1 then begin y0:=(y0+y1)*0.5-0.5; y1:=y0+1; end;
+        //if SYMMETRIC_CONTINUATION<=0 then begin
+        //  if i=0 then begin
+        //    ax1:=abs(ax1); ax0:=ax1;
+        //    vx1:=abs(vx1); vx0:=vx1;
+        //    x0 :=x1-1;
+        //  end else if i=mask then begin
+        //    ax0:=-abs(ax0); ax1:=ax0;
+        //    vx0:=-abs(vx0); vx1:=vx0;
+        //    x1 :=x0+1;
+        //  end;
+        //  if j=0 then begin
+        //    ay1:=abs(ay1); ay0:=ay1;
+        //    vy1:=abs(vy1); vy0:=vy1;
+        //    y0:=y1-1;
+        //  end else if j=mask then begin
+        //    ay0:=-abs(ay0); ay1:=ay0;
+        //    vy0:=-abs(vy0); vy1:=vy0;
+        //    y1:=y0+1;
+        //  end;
+        //  if x0<0        then begin x0:=abs(x0)                  ; if x1<x0+1 then x1:=x0+1; vx0:= abs(vx0); vx1:= abs(vx1);  end else
+        //  if x1>SYS_SIZE then begin x1:=SYS_SIZE-abs(SYS_SIZE-x1); if x0>x1-1 then x0:=x1-1; vx1:=-abs(vx1); vx0:=-abs(vx0);  end else
+        //  if x1<x0+1     then begin x0:=(x0+x1)*0.5-0.5; x1:=x0+1; end;
+        //  if y0<0        then begin y0:=abs(y0)                  ; if y1<y0+1 then y1:=y0+1; vy0:= abs(vy0); vy1:= abs(vy1);  end else
+        //  if y1>SYS_SIZE then begin y1:=SYS_SIZE-abs(SYS_SIZE-y1); if y0>y1-1 then y0:=y1-1; vy1:=-abs(vy1); vx0:=-abs(vy0);  end else
+        //  if y1<y0+1     then begin y0:=(y0+y1)*0.5-0.5; y1:=y0+1; end;
+        //end;
+
+        //value[i,j].mass*=1/((x1-x0)*(y1-y0));
+        //vx0*=value[i,j].mass; vx1*=value[i,j].mass; vx1:=(vx1-vx0)/(x1-x0);
+        //vy0*=value[i,j].mass; vy1*=value[i,j].mass; vy1:=(vy1-vy0)/(y1-y0);
+        //ax0*=value[i,j].mass; ax1*=value[i,j].mass; ax1:=(ax1-ax0)/(x1-x0);
+        //ay0*=value[i,j].mass; ay1*=value[i,j].mass; ay1:=(ay1-ay0)/(y1-y0);
+        //for ti:=floor(x0) to floor(x1+1) do begin
+        //  //intersection of intervals [ti,ti+1] and [x0,x1]
+        //  // = [max(ti,x0),min(x1,ti+1)] -> weight =
+        //  cellX0:=max(x0,ti);
+        //  cellX1:=min(x1,ti+1);
+        //  wx:=cellX1-cellX0;
+        //  f:=((cellX0+cellX1)*0.5-x0);
+        //  v  [0]:=f*vx1+vx0;
+        //  acc[0]:=f*ax1+ax0;
+        //  if wx>0 then for tj:=floor(y0) to floor(y1+1) do begin
+        //    cellY0:=max(y0,tj);
+        //    cellY1:=min(y1,tj+1);
+        //    wy:=(cellY1-cellY0)*wx;
+        //    if wy>0 then with newState[ti and mask,tj and mask] do begin
+        //      f:=((cellY0+cellY1)*0.5-y0);
+        //      v  [1]:=f*vy1+vy0;
+        //      acc[1]:=f*ay1+ay0;
+        //      mass+=value[i,j].mass*wy;
+        //      p   +=v              *wy;
+        //      a   +=acc            *wy;
+        //    end;
+        //  end;
+        //end;
       end;
       value:=newState;
     end;

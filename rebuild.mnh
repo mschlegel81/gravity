@@ -1,3 +1,4 @@
+#!C:\bin\mnh_light.exe -v1 -stdout
 LAZ_BUILD:='..\lazarus64\lazbuild.exe';
 LPI:='gravity.lpi';
 MODES:=['--bm=opt32' =>'grav032.exe',

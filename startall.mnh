@@ -96,7 +96,7 @@ start(replay:Boolean)->begin
                      local load:=getCpuLoadHistory(32);
                      while(((load.size<16 OR max(load-[load.size-1..0])>=CPU_threshold) OR
                             (runningGravTasks.size>=MAX_GRAV_INSTANCES) OR
-                            (scriptTime<lastStartedAt+1)) AND (userSignal=='') ,begin
+                            (scriptTime<lastStartedAt+2)) AND (userSignal=='') ,begin
                        tPrintD('Next:     ',execName.relativeFileName,"; CPU: ",BLOCKS[load].join,load.trailing,'%');
                        load:=getCpuLoadHistory(32);
                        sleep(0.1);
@@ -160,7 +160,7 @@ watcher(filename:String)->{begin
       while(!isVoid(n:=it()),begin
         trail:=
         (n.matches('Calculation thread stopped')
-        ? ["\t"&n]
+        ? trail.trailing|("\t"&n)
         : trailing(trail|("\t"&n),trailSize));
       end);
       trail|=("\t"&'...timed out');

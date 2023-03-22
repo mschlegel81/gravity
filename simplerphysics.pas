@@ -24,7 +24,7 @@ TYPE
 IMPLEMENTATION
 USES sysutils,customization,math;
 VAR cachedAttraction:array [-SYS_SIZE+1..SYS_SIZE-1,-SYS_SIZE+1..SYS_SIZE-1] of T_2dVector;
-    attractionInitialized:boolean=false;
+    attractionInitialized:longint=-1;
     sinus_table:array[0..SYS_SIZE-1] of double;
     box:array[0..SYS_SIZE-1] of set of byte;
 
@@ -44,7 +44,7 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
       symX,symY:longint;
       temp:T_2dVector;
   begin
-    if reinitializeAttractionFactors(stepIndex) or not(attractionInitialized) then begin
+    if reinitializeAttractionFactors(stepIndex) or (attractionInitialized<>ATTRACTION_RANGE) then begin
       log.append('(Re)initializing attraction factors').appendLineBreak;
 
       for ix:=-SYS_SIZE+1 to SYS_SIZE-1 do for iy:=-SYS_SIZE+1 to SYS_SIZE-1 do begin
@@ -54,9 +54,8 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
           temp+=calculateAttraction(ix+symX*SYS_SIZE,iy+symY*SYS_SIZE);
         cachedAttraction[ix,iy]:=temp;
       end;
-
     end;
-    if not(attractionInitialized) then begin
+    if (attractionInitialized<>ATTRACTION_RANGE) then begin
       for ix:=0 to SYS_SIZE-1 do begin
         box[ix]:=[];
         for iy:=ix-ATTRACTION_RANGE+SYS_SIZE to ix+ATTRACTION_RANGE+SYS_SIZE do include(box[ix],byte(iy mod SYS_SIZE));
@@ -64,8 +63,8 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
       if SYMMETRIC_CONTINUATION>0
       then for ix:=0 to SYS_SIZE-1 do sinus_table[ix]:=sin(ix*2*pi/SYS_SIZE)
       else for ix:=0 to SYS_SIZE-1 do sinus_table[ix]:=cos(ix*  pi/SYS_SIZE);
+      attractionInitialized:=ATTRACTION_RANGE;
     end;
-    attractionInitialized:=true;
   end;
 
 { T_cellSystem }
@@ -166,7 +165,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
     end;
 
   CONST DT_MIN=dt/200; //not more than 200 sub steps
-        MAX_TRANSPORT_RANGE=0.7141*GRID_SIZE;
+        MAX_TRANSPORT_RANGE=2*0.7141*GRID_SIZE;
         SPEED_CAP=0.5*MAX_TRANSPORT_RANGE/DT_MIN;
   VAR capping:boolean=false;
       dtRest:double;
@@ -219,46 +218,6 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
         ax0,ax1,ay0,ay1,
         jx0,jx1,jy0,jy1:double;
         jerkFactor:double;
-    PROCEDURE throwPixel(CONST ti,tj:double; CONST m,vx,vy,ax,ay:double); inline;
-      VAR wx,wy,fraction:double;
-          i,j:longint;
-      begin
-        i:=floor(ti); wx:=ti-i; i:=i and mask;
-        j:=floor(tj); wy:=tj-j; j:=j and mask;
-
-        with newState[i,j] do begin
-          fraction:=m*(1-wx)*(1-wy);
-          mass+=   fraction;
-          p[0]+=vx*fraction;
-          p[1]+=vy*fraction;
-          a[0]+=ax*fraction;
-          a[1]+=ay*fraction;
-        end;
-        with newState[i,(j+1) and mask] do begin
-          fraction:=m*(1-wx)*wy;
-          mass+=   fraction;
-          p[0]+=vx*fraction;
-          p[1]+=vy*fraction;
-          a[0]+=ax*fraction;
-          a[1]+=ay*fraction;
-        end;
-        with newState[(i+1) and mask,j] do begin
-          fraction:=m*wx*(1-wy);
-          mass+=   fraction;
-          p[0]+=vx*fraction;
-          p[1]+=vy*fraction;
-          a[0]+=ax*fraction;
-          a[1]+=ay*fraction;
-        end;
-        with newState[(i+1) and mask,(j+1) and mask] do begin
-          fraction:=m*wx*wy;
-          mass+=   fraction;
-          p[0]+=vx*fraction;
-          p[1]+=vy*fraction;
-          a[0]+=ax*fraction;
-          a[1]+=ay*fraction;
-        end;
-      end;
 
     begin
       jerkFactor:=dtEff*0.5/(simTime-prevAccelTime);
@@ -273,13 +232,13 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
             v  :=p*(1/mass);
             acc:=a*(1/mass);
           end else begin
-            v  :=zeroVec; //p*(1/(epsilon+mass));
-            acc:=zeroVec; //a*(1/(epsilon+mass));
+            v  :=zeroVec;
+            acc:=zeroVec;
           end;
           if capping and (mass>=UPPER_BLACK_LEVEL) then begin //cap speed
             //squared speed:
-            f:=(sqr(p[0])+sqr(p[1]))/(epsilon+sqr(mass));
-            if f>SPEED_CAP*SPEED_CAP then p*=SPEED_CAP/sqrt(f);
+            f:=sqr(v[0])+sqr(v[1]);
+            if f>SPEED_CAP*SPEED_CAP then v*=SPEED_CAP/sqrt(f);
           end;
 
           if (ANNIHILATION_FACTOR>0) and (mass>ANNIHILATION_THRESHOLD)
@@ -318,7 +277,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
         vy0:=v[1] +dtEff*(ay0 +jy0);
         y0 :=j-  f+dtEff*(v[1]+dtEff*0.5*(ay0+jy0*0.66666666));
 
-        ay1:=staggeredAcceleration[i, j               ,1];
+        ay1:=staggeredAcceleration[i,j,1];
         jy1:=(ay1-acc[1])*jerkFactor;
         vy1:=v[1] +dtEff*(ay1 +jy1);
         y1 :=j+1+f+dtEff*(v[1]+dtEff*0.5*(ay1+jy1*0.66666666));

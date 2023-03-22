@@ -38,7 +38,10 @@ compressSet(s)->workAllowed AND s not in alreadyExamined AND begin
   alreadyExamined|=s;
   local set:=files(['.anim','.exe','.dump'].map((e)->s.changeFileExt(e))).sort;
   local targetMnh:=s.changeFileExt('.mnh');
-  fileExists(targetMnh) AND (set.size==3) ? execPipeless(executor,[targetMnh,'check']) : void;
+  fileExists(targetMnh) AND (set.size==3) ? begin
+    log('Executing ',targetMnh,' check');
+    execPipeless(executor,[targetMnh.expandedFileName,'check']);
+  end : void;
   local targetZip:=s.changeFileExt('.dat');
   set.size==3                                               ? void : return log('Set ',s,' is incomplete') orElse false;
   (!fileExists(targetZip) OR !fileExists(targetMnh))        ? void : return log('Set ',s,' is already compressed') orElse false;

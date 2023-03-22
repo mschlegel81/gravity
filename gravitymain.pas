@@ -162,7 +162,10 @@ PROCEDURE TGravMainForm.IdleTimer1Timer(Sender: TObject);
       framesCached:=queue.dropFrame;
       if (framesCached=0) then replaying:=false;
     end else framesCached:=queue.getFrameCount;
-    caption:=appTitle+' @'+intToStr(calcFrameCount-framesCached)+' ('+intToStr(framesCached)+' frames ahead)'+BoolToStr(closing,' -- CLOSING','')+BoolToStr(replaying,'',' -- PAUSED');
+    caption:=appTitle+' @'+intToStr(calcFrameCount-framesCached)
+    +BoolToStr(threadRunning,' ('+intToStr(framesCached)+' frames ahead)',' (done)')
+    +BoolToStr(closing,' -- CLOSING','')
+    +BoolToStr(replaying,'',' -- PAUSED');
     if closing and not(threadRunning) then close;
   end;
 

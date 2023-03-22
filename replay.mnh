@@ -7,20 +7,65 @@ private scaleTo(colorIndexes:IntList,width,targetWidth)->begin
   local newXValues:=(0.5+[0..targetWidth -1])*width /targetWidth +0.5;
   local newYValues:=(0.5+[0..targetHeight-1])*height/targetHeight+0.5;
 
-  local finerIndexes:=colorIndexes
+  local iMax:=RealColors.size-1;
+
+  local colors:=
+  colorIndexes
     .chunkMap(width)
     .map((row)->newBSpline(row)(newXValues))
     .toList
     .transpose
-    .map((column)->newBSpline(column)(newYValues))
+    .pMap((column)->RealColors[round(newBSpline(column)(newYValues))])
     .transpose
-    .flatten
-    .{vectorIfThenElse($L<0,0,round($L))};
+    .agg(|);
 
-  RealColors[vectorIfThenElse(finerIndexes<RealColors.size,
-                              finerIndexes,
-                              RealColors.size-1)];
+  colors.size==colorIndexes.size
+  ? colors
+  : begin
+      warn("Overshooting! Re-Scaling with limiter.");
+  colorIndexes
+    .chunkMap(width)
+    .map((row)->newBSpline(row)(newXValues))
+    .toList
+    .transpose
+    .pMap((column)->begin
+       local tmp:=newBSpline(column)(newYValues);
+       tmp:=vectorIfThenElse(tmp<0,0,round(tmp));
+       RealColors[vectorIfThenElse(tmp<=iMax,tmp,iMax)];
+     end)
+    .transpose
+    .agg(|);
+    end;
+  //finerIndexes:=vectorIfThenElse(finerIndexes<0,
+  //                               0,
+  //                               round(finerIndexes));
+  //finerIndexes:=vectorIfThenElse(finerIndexes<RealColors.size,
+  //                               finerIndexes,
+  //                               RealColors.size-1);
+
 end;
+
+//private scaleTo(colorIndexes:IntList,width,targetWidth)->begin
+//  local height      :=colorIndexes.size div width;
+//  local targetHeight:=round(height*(targetWidth/width));
+//
+//  local newXValues:=(0.5+[0..targetWidth -1])*width /targetWidth +0.5;
+//  local newYValues:=(0.5+[0..targetHeight-1])*height/targetHeight+0.5;
+//
+//  local finerIndexes:=colorIndexes
+//    .chunkMap(width)
+//    .map((row)->newBSpline(row)(newXValues))
+//    .toList
+//    .transpose
+//    .map((column)->newBSpline(column)(newYValues))
+//    .transpose
+//    .flatten
+//    .{vectorIfThenElse($L<0,0,round($L))};
+//
+//  RealColors[vectorIfThenElse(finerIndexes<RealColors.size,
+//                              finerIndexes,
+//                              RealColors.size-1)];
+//end;
 
 mutable workAllowed:=true;
 ensureCancelTask->begin
@@ -90,21 +135,6 @@ replay(filename,scaledUp,export:Boolean)->fileExists(filename) AND workAllowed ?
   callMemoryCleaner;
   doLog(' - EOF');
 end : void;
-
-begin
-  local I0:=[0..32*32-1]*2;
-  local I1:=[0..32*32-1]*2+1;
-  local prev:=0;
-  byteStreamIterator('./0_high_density/grav032.anim',32*32*2+8)
-    .map((l)->['',l])
-    .map((D)->begin
-       local n:=D[1].head(32*32*2);
-       n:=n[I0]+n[I1]*256;
-       n:=prev+n-65536*ord((n and 32768)>0);
-       [D[0],prev:=n];
-     end)
-   .toList;
-end;
 
 memoized replayableFiles->
   allFiles('.','grav*.anim').map((l)->begin

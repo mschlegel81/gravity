@@ -62,44 +62,44 @@ FUNCTION getInitialState: T_systemState;
 
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel: T_vectorField);  
   VAR i,j:longint;
-      //w0,w1,n:double; 
+      w0,w1,n:double; 
 	  d:T_2dVector;
   begin
     if (timeStepIndex<=1000)
 	then for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do accel[i,j,1]+=50
 	else begin
-	  d[1]:=sqr((timeStepIndex-1000)/500)*pi;
-	  d[0]:=sin(d[1])*50;
-	  d[1]:=cos(d[1])*50;
-	  for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do accel[i,j]+=d;
+	  //d[1]:=sqr((timeStepIndex-1000)/500)*pi;
+	  //d[0]:=sin(d[1])*50;
+	  //d[1]:=cos(d[1])*50;
+	  //for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do accel[i,j]+=d;
 	  
 	
-	  //if (round(timeStepIndex) mod 2000<1000) then begin
-	  //  w0:=50;
-		//w1:=0;	  
-	  //end else begin
-	  //  w0:=0;
-		//w1:=50;
-	  //end;
-	  //for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
-		//d[0]:=(i+0.5)/SYS_SIZE-0.5;
-		//d[1]:=(j    )/SYS_SIZE-0.5;
-		//n:=sqrt(d[0]*d[0]+d[1]*d[1]);
-		//if n<0.15 then d*=1000/n
-		//          else begin
-		//  d*=-w1/n;	      		  
-		//end;  
-		//accel[i,j,0]+=d[0];
-		//
-		//d[0]:=(i    )/SYS_SIZE-0.5;
-		//d[1]:=(j+0.5)/SYS_SIZE-0.5;
-		//n:=sqrt(d[0]*d[0]+d[1]*d[1]);
-		//if n<0.15 then d*=1000/n
-		//          else begin
-		//  d*=-w1/n;	         
-		//end;  
-		//accel[i,j,1]+=d[1]+w0;
-      //end;
+	  if (round(timeStepIndex) mod 2000<1000) then begin
+	    w0:=50;
+		w1:=0;	  
+	  end else begin
+	    w0:=0;
+		w1:=50;
+	  end;
+	  for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
+		d[0]:=(i+0.5)/SYS_SIZE-0.5;
+		d[1]:=(j    )/SYS_SIZE-0.5;
+		n:=sqrt(d[0]*d[0]+d[1]*d[1]);
+		if n<0.15 then d*=1000/n
+		          else begin
+		  d[0]:=d[0]*(-w1/n)+accel[i,j,0];
+		end;  
+		accel[i,j,0]:=d[0];
+		
+		d[0]:=(i    )/SYS_SIZE-0.5;
+		d[1]:=(j+0.5)/SYS_SIZE-0.5;
+		n:=sqrt(d[0]*d[0]+d[1]*d[1]);
+		if n<0.15 then d*=1000/n
+		          else begin				  
+		  d[1]:=d[1]*(-w1/n)+accel[i,j,1]+w0;
+		end;  
+		accel[i,j,1]+=d[1];
+      end;
 	end;
   end;
 

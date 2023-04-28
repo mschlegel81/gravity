@@ -44,7 +44,9 @@ FUNCTION calcThread(p:pointer):ptrint;
       newPic : P_rgbPicture;
       animStream: TFileStream;
 
-  PROCEDURE addPicture(CONST writeAnimStream:boolean);
+  PROCEDURE addPicture(CONST writeAnimStream,sleepABit:boolean);
+    var
+      ahead: LongInt;
     begin
       if writeAnimStream then begin
         newPic^.write(animStream,prevPic);
@@ -55,12 +57,15 @@ FUNCTION calcThread(p:pointer):ptrint;
            .append(newPic^.mass,6)
            .appendLineBreak;
       end;
-      if prevPic<>nil then queue^.addFrame(prevPic);
+      if prevPic<>nil then begin
+        ahead:=queue^.addFrame(prevPic);
+        if sleepABit and (ahead>50) then sleep((ahead*GravMainForm.IdleTimer1.Interval) shr 1);
+      end;
       prevPic:=newPic;
       inc(calcFrameCount);
     end;
 
-  PROCEDURE replay;
+  PROCEDURE replay(CONST sleepABit:boolean);
     VAR replaying: Boolean;
     begin
       animStream:=TFileStream.create(fileName_anim,fmOpenReadWrite or fmShareDenyWrite);
@@ -68,9 +73,13 @@ FUNCTION calcThread(p:pointer):ptrint;
       repeat
         new(newPic,create);
         replaying:=newPic^.load(animStream,prevPic);
-        addPicture(false);
-      until not(replaying) or (calcFrameCount>=sys.numberOfFrames);
-      if calcFrameCount<sys.numberOfFrames then begin
+        addPicture(false,sleepABit)
+      until not(replaying) or (calcFrameCount>=sys.numberOfFrames) or closing;
+      if closing then begin
+        new(newPic,create);
+        repeat until not newPic^.load(animStream,prevPic);
+        dispose(newPic,destroy);
+      end else if (calcFrameCount<sys.numberOfFrames) then begin
         log.append('ERROR ON RESTORE: Expected to read ')
            .append(sys.numberOfFrames)
            .append(' frames but read only ')
@@ -83,29 +92,34 @@ FUNCTION calcThread(p:pointer):ptrint;
         while queue^.dropFrame>0 do;
         prevPic:=nil;
         newPic:=sys.getPicture;
-        addPicture(true);
+        addPicture(true,false);
       end;
     end;
+
+  VAR anyCalculated:boolean=false;
 
   begin
     randomize;
     queue:=P_animation(p);
     sys.create;
     if fileExists(fileName_dump) and fileExists(fileName_anim) and not(hasRestartFlag) and sys.loadFromFile(fileName_dump)
-    then replay
+    then replay(hasReplayFlag or (sys.numberOfFrames>=5000))
     else begin
       animStream:=TFileStream.create(fileName_anim,fmCreate or fmShareDenyWrite);
       animStream.Seek(0,soBeginning);
       newPic:=sys.getPicture;
-      addPicture(true); //frame #0
+      addPicture(true,false); //frame #0
     end;
     while not(closing) and (calcFrameCount<5000) and not(hasReplayFlag) do begin
       sys.doMacroTimeStep(calcFrameCount);
+      anyCalculated:=true;
       newPic:=sys.getPicture;
-      addPicture(true);
+      addPicture(true,false);
     end;
-    sys.numberOfFrames:=calcFrameCount;
-    sys.saveToFile(fileName_dump);
+    if anyCalculated then begin
+      sys.numberOfFrames:=calcFrameCount;
+      sys.saveToFile(fileName_dump);
+    end;
     queue^.addFrame(newPic);
     animStream.destroy;
     sys.destroy;

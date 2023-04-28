@@ -77,7 +77,6 @@ exeSorting(L:StringCollection)->L.map((n)->n.extractFileNameOnly.clean(['0'..'9'
 
 start(replay:Boolean)->begin
   assertUniqueInstance;
-  local CPU_threshold:=replay ? 85 : 50;
   local firstQuestion:=true;
   local userSignal:='';
   localAsync({while(true,begin
@@ -85,7 +84,6 @@ start(replay:Boolean)->begin
     firstQuestion:=false;
   end)});
 
-  local lastStartedAt:=scriptTime;
   local startedCount:=0;
   gravExes
   .exeSorting
@@ -93,10 +91,10 @@ start(replay:Boolean)->begin
                  execName in runningGravTasks ? tPrint('          ',execName.relativeFileName,' is already running')
                  : begin
                      userSignal:=userSignal==QUIT ? QUIT : '';
+                     local wait:=waitForFreeCapacity;
                      local load:=getCpuLoadHistory(32);
-                     while(((load.size<16 OR max(load-[load.size-1..0])>=CPU_threshold) OR
-                            (runningGravTasks.size>=MAX_GRAV_INSTANCES) OR
-                            (scriptTime<lastStartedAt+2)) AND (userSignal=='') ,begin
+                     while((!peekFuture(wait) OR
+                            (runningGravTasks.size>=MAX_GRAV_INSTANCES)) AND (userSignal=='') ,begin
                        tPrintD('Next:     ',execName.relativeFileName,"; CPU: ",BLOCKS[load].join,load.trailing,'%');
                        load:=getCpuLoadHistory(32);
                        sleep(0.1);
@@ -108,7 +106,6 @@ start(replay:Boolean)->begin
                          ? tPrint('Forced:   ',execName.relativeFileName)
                          : tPrint('Starting: ',execName.relativeFileName);
                          execute(execName,replay);
-                         lastStartedAt:=scriptTime;
                          startedCount+=1;
                          invalidateRunningGravTasks;
                        end;
@@ -133,6 +130,7 @@ end);
 //*Decompress compressed files matching pattern
 main('d',pattern)->mnhFiles.filter((script)->script.matches(pattern)).pEach(script,begin
   print('Starting ',script);
+  waitForFreeCapacity()();
   assert(exec(executor,[script])[1]==0,'Script ',script,' failed');
   print(script,' executed successfully');
 end);

@@ -10,19 +10,19 @@ CONST
   ATTRACTION_RANGE        =23;
 
   REPULSION_THRESHOLD=0;
-  REPULSION_LINEAR   =10;
-  REPULSION_QUADRATIC=1;
+  REPULSION_LINEAR   =1;
+  REPULSION_QUADRATIC=0;
 
-  ANNIHILATION_THRESHOLD=5;
-  ANNIHILATION_FACTOR   =1E-2;  
+  ANNIHILATION_THRESHOLD=1;
+  ANNIHILATION_FACTOR   =5E-2;  
   
-  DIFFUSION_BY_VELOCITY=0.1;
-  DIFFUSION_BASE       =0.1;  
+  DIFFUSION_BY_VELOCITY=0;
+  DIFFUSION_BASE       =0;  
   
   DRIFT_TO_CENTER=true;
 
 VAR 
-  REGROWTH_FACTOR:double=1E-2;
+  REGROWTH_FACTOR:double=0;
 
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
@@ -32,10 +32,11 @@ IMPLEMENTATION
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
   begin     	
     case initialDensityVariant of
-      id_low:  REGROWTH_FACTOR:=0.5E-2;
-      id_high: REGROWTH_FACTOR:=1E-2;
-      else     REGROWTH_FACTOR:=2E-2;
+      id_low:  REGROWTH_FACTOR:=0.5E-2*(1-cos(timeStepIndex*2*pi/1000));
+      id_high: REGROWTH_FACTOR:=  1E-2*(1-cos(timeStepIndex*2*pi/1000));
+      else     REGROWTH_FACTOR:=  2E-2*(1-cos(timeStepIndex*2*pi/1000));
     end;
+    if REGROWTH_FACTOR<0 then REGROWTH_FACTOR:=0;
     result:=false;
   end;
 
@@ -55,7 +56,7 @@ FUNCTION getInitialState: T_systemState;
       massFactor:double;
   begin
     case initialDensityVariant of
-      id_low:  massFactor:= 0;
+      id_low:  massFactor:= 0.25;
       id_high: massFactor:= 0.5;
       else     massFactor:= 1;
     end;

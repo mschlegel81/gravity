@@ -1,5 +1,13 @@
 MY_IPC_ID:='CPU_MONITOR_DEMON';
-mutable cpuLoad:=[];
+mutable cpuLoad:=[0];
+
+private ensure_server->
+  isIpcServerRunning(MY_IPC_ID)
+  ? void
+  : begin
+      execAsync(mnhInfo['lightVersionPath'],['-quiet','-headless',myPath]);
+      sleep(1);
+    end;
 
 getCpuLoadHistory->begin
   local lastResult:=[100];
@@ -8,12 +16,7 @@ save;
   scriptTime<lastQueried+1
   ? lastResult
   : begin
-      isIpcServerRunning(MY_IPC_ID)
-      ? void
-      : begin
-          execAsync(mnhInfo['lightVersionPath'],['-quiet','-headless',myPath]);
-          sleep(1);
-        end;
+      ensure_server;
       lastResult:=sendIpcRequest(MY_IPC_ID,'get');
       lastQueried:=scriptTime;
       lastResult;
@@ -22,7 +25,22 @@ end;
 
 getCpuLoadHistory(maxSize:Int)->getCpuLoadHistory.trailing(maxSize);
 
+waitForFreeCapacity->begin
+  ensure_server;
+  future({begin
+    local myId:=[systime,scriptTime,intRandom(2^256)].toString.sha256;
+    while(!(true==sendIpcRequest(MY_IPC_ID,['CAN_START',myId])), sleep(1));
+    true;
+  end});
+end;
+
 mutable lastQueried:=0;
+mutable queued:=[];
+mutable staleAt:=[].toMap;
+mutable dontStartBefore:=scriptTime+10;
+
+
+THRESHOLD_CAPACITY:=75;
 
 main->begin
   startIpcServer(MY_IPC_ID,(request)->begin
@@ -30,6 +48,37 @@ main->begin
     ? begin
         lastQueried:=scriptTime-600;
         true;
+      end
+    : request.isList(2) AND request[0]='CAN_START'
+    ? begin
+        lastQueried:=scriptTime;
+        //Enqueue if not present yet
+        local id:=request[1];
+        id in queued ? void : log('New ID') orElse queued|=id;
+        staleAt[id]:=scriptTime+10;
+
+        while(queued.size>1 AND scriptTime>staleAt[queued.head],begin
+          local drop:=queued.head;
+          log(drop,' has gone stale');
+          staleAt>>drop;
+          queued:=queued.tail;
+        end);
+
+        log('id   : ',id,
+          "\nqueue: ",queued.join("\n       "),'  (',queued.size,')',
+          "\nload : ",(cpuLoad-[cpuLoad.size-1..0]).agg(max));
+        id==queued.head AND (scriptTime>dontStartBefore) AND (cpuLoad-[cpuLoad.size-1..0]<THRESHOLD_CAPACITY).agg(and)
+        ? begin
+            queued:=queued.tail;
+            staleAt[id]:=void;
+            dontStartBefore:=scriptTime+1;
+            note('->START');
+            true;
+          end
+        : begin
+            note('->WAIT');
+            false;
+          end;
       end
     : begin
         lastQueried:=scriptTime;
@@ -47,3 +96,4 @@ main->begin
 end;
 
 main('kill')->isIpcServerRunning(MY_IPC_ID) ? sendIpcRequest(MY_IPC_ID,'KILL') : void;
+

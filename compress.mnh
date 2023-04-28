@@ -48,11 +48,7 @@ compressSet(s)->workAllowed AND s not in alreadyExamined AND begin
   (set[2].expandedFileName.relativeFileName not in blocked) ? void : return log('Set ',s,' is blocked') orElse false;
   deleteFile(targetZip);
 
-  begin
-    local logged:=false;
-    local sleepTime:=0.1;
-    while(getCpuLoadHistory.trailing>50 AND workAllowed,begin logged ? void : log('Waiting for low cpu load before writing ',targetZip); logged:=true; sleep(sleepTime:=30-(30-sleepTime)*0.99); end);
-  end;
+  waitForFreeCapacity()();
   workAllowed ? begin
     log('Writing ',targetZip);
     runningTasks+=1;

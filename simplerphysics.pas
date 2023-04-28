@@ -165,41 +165,38 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
     end;
 
   CONST DT_MIN=dt/200; //not more than 200 sub steps
-        MAX_TRANSPORT_RANGE=2*0.7141*GRID_SIZE;
+        MAX_TRANSPORT_RANGE    =2*0.7141*GRID_SIZE;
+        MAX_ALLOWED_AREA_CHANGE=0.3*GRID_SIZE*GRID_SIZE;
         SPEED_CAP=0.5*MAX_TRANSPORT_RANGE/DT_MIN;
   VAR capping:boolean=false;
       dtRest:double;
   FUNCTION calcTimeStep:double;
     CONST mask=SYS_SIZE-1;
     VAR i,j:longint;
-        vMax,v,a,dadxMax,aMax:double;
+        vMax,v,areaChange,maxAreaChange:double;
     begin
       result:=dtRest;
       vMax:=epsilon;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do if mass>UPPER_C10_LEVEL then begin
-        v:=(p[0]*p[0]+p[1]*p[1]+(a[0]*a[0]+a[1]*a[1])*dt*dt)/(mass*mass);
+        v:=(p[0]*p[0]+p[1]*p[1]+(a[0]*a[0]+a[1]*a[1])*dtRest*dtRest)/(mass*mass);
         if v>vMax then vMax:=v;
       end;
       vMax:=sqrt(vMax);
-
-      aMax:=epsilon;
-      dadxMax:=epsilon;
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do if value[i,j].mass>UPPER_C10_LEVEL then begin
-        a:=sqr(staggeredAcceleration[i,j,0])+sqr(staggeredAcceleration[i,j,1]);
-        if a>aMax then aMax:=a;
-        a:=abs(staggeredAcceleration[i,j,0]-staggeredAcceleration[(i+1) and mask,j,0]); if a>dadxMax then dadxMax:=a;
-        a:=abs(staggeredAcceleration[i,j,1]-staggeredAcceleration[i,(j+1) and mask,1]); if a>dadxMax then dadxMax:=a;
-      end;
-      aMax:=max(sqrt(aMax),dadxMax*2);
-
-      result:=min(MAX_TRANSPORT_RANGE/vMax,
-                  sqrt(MAX_TRANSPORT_RANGE*2/aMax));
-
+      result:=MAX_TRANSPORT_RANGE/vMax;
       if result<DT_MIN then begin
         result:=DT_MIN;
         if not(capping) then log.append('WARNING: Speed limit exceeded. Capping...').appendLineBreak;
         capping:=true;
+      end else begin
+        maxAreaChange := epsilon;
+        for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do if value[i,j].mass>UPPER_C10_LEVEL then begin
+          areaChange:=abs((staggeredAcceleration[i,j,1]-staggeredAcceleration[i,(j+1) and mask,1])
+                         +(staggeredAcceleration[i,j,0]-staggeredAcceleration[(i+1) and mask,j,0]));
+          if areaChange>maxAreaChange then maxAreaChange:=areaChange;
+        end;
+        result:=max(DT_MIN,min(result,sqrt(MAX_ALLOWED_AREA_CHANGE/maxAreaChange)));
       end;
+
       if result>dtRest
       then result:=dtRest
       else result:=dtRest/ceil(dtRest/result);

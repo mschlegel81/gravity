@@ -15,7 +15,7 @@ private scaleTo(colorIndexes:IntList,width,targetWidth)->begin
     .map((row)->newBSpline(row)(newXValues))
     .toList
     .transpose
-    .pMap((column)->RealColors[round(newBSpline(column)(newYValues))])
+    .map((column)->RealColors[round(newBSpline(column)(newYValues))])
     .transpose
     .agg(|);
 
@@ -28,7 +28,7 @@ private scaleTo(colorIndexes:IntList,width,targetWidth)->begin
     .map((row)->newBSpline(row)(newXValues))
     .toList
     .transpose
-    .pMap((column)->begin
+    .map((column)->begin
        local tmp:=newBSpline(column)(newYValues);
        tmp:=vectorIfThenElse(tmp<0,0,round(tmp));
        RealColors[vectorIfThenElse(tmp<=iMax,tmp,iMax)];
@@ -44,28 +44,6 @@ private scaleTo(colorIndexes:IntList,width,targetWidth)->begin
   //                               RealColors.size-1);
 
 end;
-
-//private scaleTo(colorIndexes:IntList,width,targetWidth)->begin
-//  local height      :=colorIndexes.size div width;
-//  local targetHeight:=round(height*(targetWidth/width));
-//
-//  local newXValues:=(0.5+[0..targetWidth -1])*width /targetWidth +0.5;
-//  local newYValues:=(0.5+[0..targetHeight-1])*height/targetHeight+0.5;
-//
-//  local finerIndexes:=colorIndexes
-//    .chunkMap(width)
-//    .map((row)->newBSpline(row)(newXValues))
-//    .toList
-//    .transpose
-//    .map((column)->newBSpline(column)(newYValues))
-//    .transpose
-//    .flatten
-//    .{vectorIfThenElse($L<0,0,round($L))};
-//
-//  RealColors[vectorIfThenElse(finerIndexes<RealColors.size,
-//                              finerIndexes,
-//                              RealColors.size-1)];
-//end;
 
 mutable workAllowed:=true;
 ensureCancelTask->begin
@@ -103,16 +81,17 @@ replay(filename,scaledUp,export:Boolean)->fileExists(filename) AND workAllowed ?
 
   byteStreamIterator(filename,chunkSize+8,export ? void : 60)
     .map((line)->[filename.changeFileExt(format('_%4.4d.png',index+=1)),begin bytesRead+=line.size; line; end])
-    .map((D)->begin
+    .pMap((D)->begin
        local n:=D[1].head(chunkSize);
        n:=n[I0]+n[I1]*256;
-       n:=prev+n-65536*ord((n and 32768)>0);
-       [D[0],prev:=n];
+       n-=65536*ord((n and 32768)>0);
+       [D[0],n];
      end)
+    .map((D)->[D[0],prev+=D[1]])
     .filter((D)->!(export AND fileExists(D[0])))
     .{scaledUp
-     ? $stream.map((D)->[D[0],[scaleTo(D[1],res,hiRes),hiRes]])
-     : $stream.map((D)->[D[0],[RealColors[D[1]]       ,res  ]])}
+     ? $stream.map((D)->[D[0],[scaleTo   (D[1],res,hiRes),hiRes]])
+     : $stream.map((D)->[D[0],[RealColors[D[1]]          ,res  ]])}
   .agg((d)->begin
     setOptions(["axisStyleX"=>0,"axisStyleY"=>0].toMap);
     plot();
@@ -154,6 +133,9 @@ main->begin
   assertGuiStarted;
   ask('Which file to replay?',replayableFiles.getInner(0)).replay(true,false);
 end;
+
+//*Display this help
+main('-h')->helpOnMain.print;
 
 USE formattingUtils;
 //*List files with respective line counts

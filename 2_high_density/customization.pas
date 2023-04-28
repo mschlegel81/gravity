@@ -20,7 +20,7 @@ CONST
   DIFFUSION_BY_VELOCITY=0.01;
   DIFFUSION_BASE       =0.6;  
 
-VAR DRIFT_TO_CENTER:boolean=false;
+  DRIFT_TO_CENTER=false;
 
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
@@ -33,9 +33,8 @@ FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
     result:=(timeStepIndex mod 20=0);
 	forceFactor:=0.1E-3*(timeStepIndex mod 1000);
 	if timeStepIndex mod 1000>=800 then begin
-	  forceFactor:=0;
-	  DRIFT_TO_CENTER:=false;
-	end else DRIFT_TO_CENTER:=true;  
+	  forceFactor:=0;	  
+	end;  
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;

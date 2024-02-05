@@ -1,50 +1,5 @@
 USE colorTable;
 
-private scaleTo(colorIndexes:IntList,width,targetWidth)->begin
-  local height      :=colorIndexes.size div width;
-  local targetHeight:=round(height*(targetWidth/width));
-
-  local newXValues:=(0.5+[0..targetWidth -1])*width /targetWidth +0.5;
-  local newYValues:=(0.5+[0..targetHeight-1])*height/targetHeight+0.5;
-
-  local iMax:=RealColors.size-1;
-
-  local colors:=
-  colorIndexes
-    .chunkMap(width)
-    .map((row)->newBSpline(row)(newXValues))
-    .toList
-    .transpose
-    .map((column)->RealColors[round(newBSpline(column)(newYValues))])
-    .transpose
-    .agg(|);
-
-  colors.size==colorIndexes.size
-  ? colors
-  : begin
-      warn("Overshooting! Re-Scaling with limiter.");
-  colorIndexes
-    .chunkMap(width)
-    .map((row)->newBSpline(row)(newXValues))
-    .toList
-    .transpose
-    .map((column)->begin
-       local tmp:=newBSpline(column)(newYValues);
-       tmp:=vectorIfThenElse(tmp<0,0,round(tmp));
-       RealColors[vectorIfThenElse(tmp<=iMax,tmp,iMax)];
-     end)
-    .transpose
-    .agg(|);
-    end;
-  //finerIndexes:=vectorIfThenElse(finerIndexes<0,
-  //                               0,
-  //                               round(finerIndexes));
-  //finerIndexes:=vectorIfThenElse(finerIndexes<RealColors.size,
-  //                               finerIndexes,
-  //                               RealColors.size-1);
-
-end;
-
 mutable workAllowed:=true;
 ensureCancelTask->begin
   local taskWasStartedBefore:=false;
@@ -57,7 +12,7 @@ end;
 
 RealColors:=colorTable*(1/255);
 
-replay(filename,scaledUp,export:Boolean)->fileExists(filename) AND workAllowed ? begin
+replay(filename)->fileExists(filename) AND workAllowed ? begin
   ensureCancelTask;
   print('Reading ',filename);
   local bytesRead:=0;
@@ -74,12 +29,11 @@ replay(filename,scaledUp,export:Boolean)->fileExists(filename) AND workAllowed ?
   local index:=-1;
   local res:=filename.extractFileNameOnly.clean(['0'..'9'],'').softCast;
   assert(res in [32,64,128,256]);
-  local hiRes:=export ? 1080 : max(plotImageSize.min,res*2);
   local chunkSize:=res*res*2;
   local prev:=0;
   local I1:=(local I0:=[0..res*res-1]*2)+1;
 
-  byteStreamIterator(filename,chunkSize+8,export ? void : 60)
+  byteStreamIterator(filename,chunkSize+8)
     .map((line)->[filename.changeFileExt(format('_%4.4d.png',index+=1)),begin bytesRead+=line.size; line; end])
     .pMap((D)->begin
        local n:=D[1].head(chunkSize);
@@ -88,25 +42,17 @@ replay(filename,scaledUp,export:Boolean)->fileExists(filename) AND workAllowed ?
        [D[0],n];
      end)
     .map((D)->[D[0],prev+=D[1]])
-    .filter((D)->!(export AND fileExists(D[0])))
-    .{scaledUp
-     ? $stream.map((D)->[D[0],[scaleTo   (D[1],res,hiRes),hiRes]])
-     : $stream.map((D)->[D[0],[RealColors[D[1]]          ,res  ]])}
+    .filter((D)->!(fileExists(D[0])))
+    .map((D)->[D[0],[RealColors[D[1]],res]])
   .agg((d)->begin
     setOptions(["axisStyleX"=>0,"axisStyleY"=>0].toMap);
     plot();
     plotRasterImage@(d[1]);
+    isGuiStarted ? postDisplay : void;
+    doLog(' '&d[0]);
+    renderPlotToCurrentImage(res,res);
+    executeWorkflow(['hq3x:0.2'],'-',d[0]);
     frames+=1;
-    export
-    ? begin
-        doLog(' '&d[0]);
-        renderToFile(d[0],d[1,1],d[1,1],true);
-      end
-    : begin
-        doLog('');
-        addAnimationFrame;
-        postDisplay;
-      end;
     workAllowed
     ? void
     : halt;
@@ -130,8 +76,8 @@ memoized replayableFiles->
 
 //*Replay with an ask dialog
 main->begin
-  assertGuiStarted;
-  ask('Which file to replay?',replayableFiles.getInner(0)).replay(true,false);
+//  assertGuiStarted;
+  ask('Which file to render?',replayableFiles.getInner(0)).replay;
 end;
 
 //*Display this help
@@ -153,24 +99,9 @@ main('list')->begin
   printf('%s',table.formatTable);
 end;
 
-//*Create png graphics for given files (or for all if none are given)
-main('png',...)->
-  (size(...)=0
+main(...)-> (size(...)=0
    ? replayableFiles.map((f)->f[1]=5000 ? f[0] : void)
    : files(...))
   .filter((f)->f.extractFileExt.lower=='.anim')
-  .each(f,replay(f,false,true));
-
-main('hiResPng',...)->
-  (size(...)=0
-   ? replayableFiles.map((f)->f[1]=5000 ? f[0] : void)
-   : files(...))
-  .filter((f)->f.extractFileExt.lower=='.anim')
-  .each(f,replay(f,true,true));
-
-//*Replay a specific file
-main(filename)->begin
-  assertGuiStarted;
-  replay(filename,false,false);
-end;
+  .each(f,replay(f));
 

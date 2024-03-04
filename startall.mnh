@@ -173,11 +173,13 @@ save;
   : trail;
 end};
 
+
+
 //*Watch all log files
 main('w')->begin
   local killSignal:=false;
-  local linesTotal:=1;
-  local cpuWidth:=32;
+  local linesTotal:=exec('cmd',['/C','mode','con'])[0].filter((line)->line.matches(': *\d+$')).head.split(':')[1].trim.softCast-1;
+  local cpuWidth  :=32;
 
   localAsync({begin local answer:=''; while(answer!=QUIT,begin
     answer:=ask('?',[QUIT,'+','-'],false);

@@ -5,7 +5,7 @@ private ensure_server->
   isIpcServerRunning(MY_IPC_ID)
   ? void
   : begin
-      execAsync(mnhInfo['lightVersionPath'],['-quiet','-headless',myPath]);
+      execAsync(executor,['-quiet','-headless',myPath]);
       sleep(1);
     end;
 
@@ -43,6 +43,7 @@ mutable dontStartBefore:=scriptTime+10;
 THRESHOLD_CAPACITY:=75;
 
 main->begin
+  freeConsole;
   startIpcServer(MY_IPC_ID,(request)->begin
     request=='KILL'
     ? begin

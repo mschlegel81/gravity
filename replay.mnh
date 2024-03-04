@@ -51,7 +51,12 @@ replay(filename)->fileExists(filename) AND workAllowed ? begin
     isGuiStarted ? postDisplay : void;
     doLog(' '&d[0]);
     renderPlotToCurrentImage(res,res);
-    executeWorkflow(['hq3x:0.2'],'-',d[0]);
+//    executeWorkflow(['hq3x:0.2'],'-',d[0]);
+    executeWorkflow(['stash:0','crop:0:2x0:2','stash:1','unstash:0','crop:-1:1x0:2','+stash:1','stash:1','unstash:0','crop:0:2x-1:1','+stash:1','stash:1','unstash:0','crop:-1:1x-1:1','+stash:1','crop:0:1x0:0.5625','hq3x:0.2','fit:1920x1080'],'-',d[0]);
+
+
+
+
     frames+=1;
     workAllowed
     ? void

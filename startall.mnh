@@ -259,8 +259,6 @@ main('w')->begin
                     end;
           end);
 
-
-
           cpuWidth:=1+out.getInner(0)        .map(::length).max
                      +out.getInner(1).flatten.map(::length).max
                    -9;
@@ -269,8 +267,7 @@ main('w')->begin
           : out:=out.each(o,o[0]&o[1].head,o[1].tail,|);
         end;
         while(out.size<linesTotal,out|="\t...");
-        clearPrint;
-        printf('%s',out);
+        printf('%s',"\f"|out);
       end
     : void;
     printDirect("\rCPU ",BLOCKS[getCpuLoadHistory(cpuWidth)].join,getCpuLoadHistory.orElse(['?']).trailing,'% ');

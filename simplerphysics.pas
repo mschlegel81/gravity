@@ -23,19 +23,17 @@ TYPE
 
 IMPLEMENTATION
 USES sysutils,customization,math;
-VAR cachedAttraction:array [-SYS_SIZE+1..SYS_SIZE-1,-SYS_SIZE+1..SYS_SIZE-1] of T_2dVector;
-    attractionInitialized:longint=-1;
-    sinus_table:array[0..SYS_SIZE-1] of double;
-    box:array[0..SYS_SIZE-1] of set of byte;
+VAR cachedAttraction:T_vectorFieldFFT;
+    attractionInitialized:boolean=false;
 
 PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
   FUNCTION calculateAttraction(CONST x,y:longint):T_2dVector;
     VAR dx,dy:double;
     begin
-      dx:=sqr(x-0.5)+sqr(y);
-      dy:=sqr(x)+sqr(y-0.5);
-      result[0]:=straightAttraction(x-0.5,y)[0];
-      result[1]:=straightAttraction(x,y-0.5)[1];
+      dx:=sqr(x+0.5)+sqr(y);
+      dy:=sqr(x)+sqr(y+0.5);
+      result[0]:=-straightAttraction(x+0.5,y)[0];
+      result[1]:=-straightAttraction(x,y+0.5)[1];
       if (dx>SYS_SIZE*SYS_SIZE) and (SYMMETRIC_CONTINUATION>0) then result[0]*=exp(-0.5*(dx*(1/SYS_SIZE*SYS_SIZE)-1));
       if (dy>SYS_SIZE*SYS_SIZE) and (SYMMETRIC_CONTINUATION>0) then result[1]*=exp(-0.5*(dy*(1/SYS_SIZE*SYS_SIZE)-1));
     end;
@@ -43,28 +41,40 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
   VAR ix,iy:longint;
       symX,symY:longint;
       temp:T_2dVector;
+
+      attractionField:T_vectorField;
   begin
-    if reinitializeAttractionFactors(stepIndex) or (attractionInitialized<>ATTRACTION_RANGE) then begin
+    if reinitializeAttractionFactors(stepIndex) or not(attractionInitialized) then begin
       log.append('(Re)initializing attraction factors').appendLineBreak;
 
-      for ix:=-SYS_SIZE+1 to SYS_SIZE-1 do for iy:=-SYS_SIZE+1 to SYS_SIZE-1 do begin
+      for ix:=0 to SYS_SIZE-1 do for iy:=0 to SYS_SIZE-1 do begin
         temp:=zeroVec;
         for symX:=-SYMMETRIC_CONTINUATION to SYMMETRIC_CONTINUATION do
         for symY:=-SYMMETRIC_CONTINUATION to SYMMETRIC_CONTINUATION do
           temp+=calculateAttraction(ix+symX*SYS_SIZE,iy+symY*SYS_SIZE);
-        cachedAttraction[ix,iy]:=temp;
+        attractionField[ix,iy]:=temp;
       end;
+      attractionField[         0,         0,0]+=0.8*REPULSION_LINEAR;
+      attractionField[SYS_SIZE-1,         0,0]-=0.8*REPULSION_LINEAR;
+      attractionField[         0,         1,0]+=0.1*REPULSION_LINEAR;
+      attractionField[SYS_SIZE-1,         1,0]-=0.1*REPULSION_LINEAR;
+      attractionField[         0,SYS_SIZE-1,0]+=0.1*REPULSION_LINEAR;
+      attractionField[SYS_SIZE-1,SYS_SIZE-1,0]-=0.1*REPULSION_LINEAR;
+
+      attractionField[         0,         0,1]+=0.8*REPULSION_LINEAR;
+      attractionField[         0,SYS_SIZE-1,1]-=0.8*REPULSION_LINEAR;
+      attractionField[         1,         0,1]+=0.1*REPULSION_LINEAR;
+      attractionField[         1,SYS_SIZE-1,1]-=0.1*REPULSION_LINEAR;
+      attractionField[SYS_SIZE-1,         0,1]+=0.1*REPULSION_LINEAR;
+      attractionField[SYS_SIZE-1,SYS_SIZE-1,1]-=0.1*REPULSION_LINEAR;
+
+
+      cachedAttraction:=accelFFT(attractionField);
     end;
-    if (attractionInitialized<>ATTRACTION_RANGE) then begin
-      for ix:=0 to SYS_SIZE-1 do begin
-        box[ix]:=[];
-        for iy:=ix-ATTRACTION_RANGE+SYS_SIZE to ix+ATTRACTION_RANGE+SYS_SIZE do include(box[ix],byte(iy mod SYS_SIZE));
-      end;
-      if SYMMETRIC_CONTINUATION>0
-      then for ix:=0 to SYS_SIZE-1 do sinus_table[ix]:=sin(ix*2*pi/SYS_SIZE)
-      else for ix:=0 to SYS_SIZE-1 do sinus_table[ix]:=cos(ix*  pi/SYS_SIZE);
-      attractionInitialized:=ATTRACTION_RANGE;
-    end;
+
+
+
+    attractionInitialized:=true;
   end;
 
 { T_cellSystem }
@@ -81,88 +91,6 @@ DESTRUCTOR T_cellSystem.destroy;
 FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
   VAR newState:T_systemState;
       staggeredAcceleration:T_vectorField;
-      masses:array[0..SYS_SIZE-1] of double;
-  PROCEDURE setGravAcceleration;
-    VAR i,j,oi,oj:longint;
-    begin
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do staggeredAcceleration[i,j]:=zeroVec;
-      if LIMITED_RANGE_ATTRACTION then begin
-        for i:=0 to SYS_SIZE-1 do for oi:=0 to SYS_SIZE-1 do if byte(oi and 255) in box[i] then begin
-          for j:=0 to SYS_SIZE-1 do masses[j]:=value[oi,j].mass;
-
-          for j:=0 to SYS_SIZE-1 do for oj:=0 to SYS_SIZE-1 do if byte(oj and 255) in box[j] then
-            staggeredAcceleration[i,j]+=cachedAttraction[oi-i,oj-j]*masses[oj];
-        end;
-      end else begin
-        for i:=0 to SYS_SIZE-1 do for oi:=0 to SYS_SIZE-1 do begin
-          for j:=0 to SYS_SIZE-1 do masses[j]:=value[oi,j].mass;
-          for j:=0 to SYS_SIZE-1 do for oj:=0 to SYS_SIZE-1 do
-            staggeredAcceleration[i,j]+=cachedAttraction[oi-i,oj-j]*masses[oj]; //*value[oi,oj].mass;
-        end;
-      end;
-    end;
-
-  PROCEDURE addPressureAccelerationAndDrift;
-    CONST mask=SYS_SIZE-1;
-
-    VAR local:array[-1..1,-1..1] of double;
-        i,j,ip,jp,im:longint;
-
-    VAR pTot:T_2dVector=(0,0);
-        mTot:double=0;
-        deltaV:T_2dVector=(0,0);
-
-    FUNCTION cap(CONST n:double):double; inline;
-      begin
-        if n<REPULSION_THRESHOLD
-        then result:=0
-        else begin
-          result:=n-REPULSION_THRESHOLD;
-          result:=result*(REPULSION_LINEAR+result*REPULSION_QUADRATIC);
-        end;
-      end;
-
-    begin
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
-        pTot+=p;
-        mTot+=mass;
-        deltaV[0]+=mass*sinus_table[i];
-        deltaV[1]+=mass*sinus_table[j];
-      end;
-      if DRIFT_TO_CENTER
-      then deltaV:=(deltaV-pTot*(1/3 ))*( 3/mTot)
-      else deltaV:=        pTot        *(-1/mTot);
-
-      if (REPULSION_LINEAR=0) AND (REPULSION_QUADRATIC=0)
-      then begin
-        for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do staggeredAcceleration[i,j]+=deltaV;
-      end else begin
-        for i:=0 to SYS_SIZE-1 do begin
-          ip:=(i+1) and mask;
-          im:=(i+mask) and mask;
-          local[-1, 0]:=cap(value[im,mask].mass);
-          local[ 0, 0]:=cap(value[i ,mask].mass);
-          local[ 1, 0]:=cap(value[ip,mask].mass);
-
-          local[-1, 1]:=cap(value[im,0   ].mass);
-          local[ 0, 1]:=cap(value[i ,0   ].mass);
-          local[ 1, 1]:=cap(value[ip,0   ].mass);
-          for j:=0 to SYS_SIZE-1 do begin
-            jp:=(j+1) and mask;
-            local[-1,-1]:=local[-1,0]; local[-1,0]:=local[-1,1]; local[-1,1]:=cap(value[im,jp].mass);
-            local[ 0,-1]:=local[ 0,0]; local[ 0,0]:=local[ 0,1]; local[ 0,1]:=cap(value[i ,jp].mass);
-            local[ 1,-1]:=local[ 1,0]; local[ 1,0]:=local[ 1,1]; local[ 1,1]:=cap(value[ip,jp].mass);
-
-            staggeredAcceleration[i,j,0]+=deltaV[0]+0.8*(local[0, 0]-local[1, 0])
-                                                   +0.1*(local[0, 1]-local[1, 1]
-                                                        +local[0,-1]-local[1,-1]);
-            staggeredAcceleration[i,j,1]+=deltaV[1]+0.8*(local[ 0,0]-local[ 0,1])
-                                                   +0.1*(local[ 1,0]-local[ 1,1]
-                                                        +local[-1,0]-local[-1,1]);
-          end;
-        end;
-      end;
-    end;
 
   CONST DT_MIN=dt/200; //not more than 200 sub steps
         MAX_TRANSPORT_RANGE    =2*0.7141*GRID_SIZE;
@@ -360,11 +288,9 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
 
     dtRest:=dt;
     while dtRest>0 do begin
-      setGravAcceleration;
-      addPressureAccelerationAndDrift;
+      staggeredAcceleration:=massFFT(value)*cachedAttraction;;
       simTime:=(timeStepIndex+1)*dt-dtRest;
       addBackgroundAcceleration(simTime/dt,staggeredAcceleration);
-      if SYMMETRIC_CONTINUATION<=0 then removeAccelerationAcrossBoundary;
 
       dtEff:=calcTimeStep;
       transport(dtEff);

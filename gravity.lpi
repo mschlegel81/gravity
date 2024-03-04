@@ -29,11 +29,12 @@
           <Parsing>
             <SyntaxOptions>
               <AllowLabel Value="False"/>
-              <CStyleMacros Value="True"/>
               <UseAnsiStrings Value="False"/>
+              <CStyleMacros Value="True"/>
             </SyntaxOptions>
           </Parsing>
           <CodeGeneration>
+            <StackSize Value="10000000"/>
             <Optimizations>
               <OptimizationLevel Value="3"/>
             </Optimizations>
@@ -41,6 +42,7 @@
           <Linking>
             <Debugging>
               <GenerateDebugInfo Value="False"/>
+              <RunWithoutDebug Value="True"/>
               <DebugInfoType Value="dsDwarf2Set"/>
             </Debugging>
             <Options>
@@ -69,11 +71,12 @@
           <Parsing>
             <SyntaxOptions>
               <AllowLabel Value="False"/>
-              <CStyleMacros Value="True"/>
               <UseAnsiStrings Value="False"/>
+              <CStyleMacros Value="True"/>
             </SyntaxOptions>
           </Parsing>
           <CodeGeneration>
+            <StackSize Value="10000000"/>
             <Optimizations>
               <OptimizationLevel Value="3"/>
             </Optimizations>
@@ -81,6 +84,7 @@
           <Linking>
             <Debugging>
               <GenerateDebugInfo Value="False"/>
+              <RunWithoutDebug Value="True"/>
               <DebugInfoType Value="dsDwarf2Set"/>
             </Debugging>
             <Options>
@@ -109,11 +113,12 @@
           <Parsing>
             <SyntaxOptions>
               <AllowLabel Value="False"/>
-              <CStyleMacros Value="True"/>
               <UseAnsiStrings Value="False"/>
+              <CStyleMacros Value="True"/>
             </SyntaxOptions>
           </Parsing>
           <CodeGeneration>
+            <StackSize Value="10000000"/>
             <Optimizations>
               <OptimizationLevel Value="3"/>
             </Optimizations>
@@ -121,6 +126,7 @@
           <Linking>
             <Debugging>
               <GenerateDebugInfo Value="False"/>
+              <RunWithoutDebug Value="True"/>
               <DebugInfoType Value="dsDwarf2Set"/>
             </Debugging>
             <Options>
@@ -149,11 +155,12 @@
           <Parsing>
             <SyntaxOptions>
               <AllowLabel Value="False"/>
-              <CStyleMacros Value="True"/>
               <UseAnsiStrings Value="False"/>
+              <CStyleMacros Value="True"/>
             </SyntaxOptions>
           </Parsing>
           <CodeGeneration>
+            <StackSize Value="20000000"/>
             <Optimizations>
               <OptimizationLevel Value="3"/>
             </Optimizations>
@@ -161,6 +168,7 @@
           <Linking>
             <Debugging>
               <GenerateDebugInfo Value="False"/>
+              <RunWithoutDebug Value="True"/>
               <DebugInfoType Value="dsDwarf2Set"/>
             </Debugging>
             <Options>
@@ -226,8 +234,8 @@
       <SyntaxOptions>
         <IncludeAssertionCode Value="True"/>
         <AllowLabel Value="False"/>
-        <CStyleMacros Value="True"/>
         <UseAnsiStrings Value="False"/>
+        <CStyleMacros Value="True"/>
       </SyntaxOptions>
     </Parsing>
     <CodeGeneration>
@@ -237,6 +245,7 @@
         <OverflowChecks Value="True"/>
         <StackChecks Value="True"/>
       </Checks>
+      <StackSize Value="10000000"/>
       <VerifyObjMethodCallValidity Value="True"/>
     </CodeGeneration>
     <Linking>

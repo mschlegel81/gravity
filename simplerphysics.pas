@@ -152,6 +152,16 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with newState[i,j] do begin mass:=0; p:=zeroVec; a:=zeroVec; end;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
         with value[i,j] do begin
+          //if (ANNIHILATION_FACTOR>0) and (mass>ANNIHILATION_THRESHOLD)
+          //then begin
+          //  wx:=REGROWTH_FACTOR-mass*(mass-ANNIHILATION_THRESHOLD)*ANNIHILATION_FACTOR;
+          //  wy:=ANNIHILATION_FACTOR*(ANNIHILATION_THRESHOLD-2*mass);
+          //  mass+=dtEff*wx*(1+dtEff*wy*0.5);
+          //end else
+          //  mass+=REGROWTH_FACTOR*dtEff;
+
+          mass+=REGROWTH_FACTOR*dtEff;
+
           if mass>epsilon
           then begin
             v  :=p*(1/mass);
@@ -168,11 +178,10 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
 
           if (ANNIHILATION_FACTOR>0) and (mass>ANNIHILATION_THRESHOLD)
           then begin
-            wx:=REGROWTH_FACTOR-mass*(mass-ANNIHILATION_THRESHOLD)*ANNIHILATION_FACTOR;
-            wy:=ANNIHILATION_FACTOR*(ANNIHILATION_THRESHOLD-2*mass);
-            mass+=dtEff*wx*(1+dtEff*wy*0.5);
-          end else
-            mass+=REGROWTH_FACTOR*dtEff;
+            wx:=ANNIHILATION_FACTOR*dtEff;
+            mass*=(1 + wx*((ANNIHILATION_THRESHOLD-mass) + wx*(sqr(mass) + ANNIHILATION_THRESHOLD*0.5*(ANNIHILATION_THRESHOLD - 3*mass))));
+          end;
+
         end;
 
 

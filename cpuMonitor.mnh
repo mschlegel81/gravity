@@ -6,7 +6,7 @@ private ensure_server->
   ? void
   : begin
       execAsync(executor,['-quiet','-headless',myPath]);
-      sleep(1);
+      while(!isIpcServerRunning(MY_IPC_ID),sleep(1));
     end;
 
 getCpuLoadHistory->begin

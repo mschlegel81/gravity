@@ -6,7 +6,7 @@ CONST
   dt                    =0.05;
   GRID_SIZE             =1;
 
-  REPULSION_LINEAR   =1;
+  REPULSION_LINEAR   =10;
   REGROWTH_FACTOR    =0;
 
   ANNIHILATION_THRESHOLD=1E10;
@@ -38,7 +38,7 @@ FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   begin
     d:=sqrt(rx*rx+ry*ry);
 	if d>range then exit(zeroVec);
-	d:=(-sin(2*pi*d/range))*strength/d;
+	d:=(0.5-0.5*cos(2*pi*d/range))*strength/d;
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;

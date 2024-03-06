@@ -11,7 +11,7 @@ positionParameter(execName:String)->begin
   while(i in occupied,i+=1);
 
   occupiedIndexes[execName]:=i;
-
+  writeDataStores;
   'pos='&i;
 end;
 
@@ -188,7 +188,7 @@ main('w')->begin
     answer==QUIT ? killSignal:=true : void;
   end); end});
   local logs:=runningGravTasks
-    .exeSorting
+    .sort((exeName)->occupiedIndexes[exeName] orElse Inf)
     .filter((e)->e.changeFileExt('.log').fileExists)
     .map((e)->begin
        local key:=e.relativeFileName.changeFileExt('');
@@ -203,7 +203,7 @@ main('w')->begin
     local anyChanged:=false;
     scriptTime>=nextScanForNewTasks
     ? begin
-        local currentRunning:=runningGravTasks.exeSorting.filter((e)->e.changeFileExt('.log').fileExists);
+        local currentRunning:=runningGravTasks.sort((exeName)->occupiedIndexes[exeName] orElse Inf).filter((e)->e.changeFileExt('.log').fileExists);
         currentRunning.map((e)->e.relativeFileName.changeFileExt('')).sort == logs.getInner(0).sort
         ? void
         : begin

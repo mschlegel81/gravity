@@ -68,16 +68,18 @@ compressSet(s)->workAllowed AND s not in alreadyExamined AND begin
   end : false;
 end;
 
+pendingCompressions->allFiles('.','*.anim').fileInfo.map((f)->begin
+  //Filter by anim file...
+  local resolution:=f['path'].extractFileNameOnly.clean(['0'..'9'],'').softCast;
+  resolution in [32,64,128,256] AND f['size']=(sqr(resolution)*2+8)*5000
+  ? f['path'].changeFileExt('')
+  : void;
+end).filter((s)->s not in alreadyExamined).unique;
+
 //*Compress all files with a complete set of frames
 main->begin
   assertUniqueInstance;
-  while(allFiles('.','*.anim').fileInfo.map((f)->begin
-          //Filter by anim file...
-          local resolution:=f['path'].extractFileNameOnly.clean(['0'..'9'],'').softCast;
-          resolution in [32,64,128,256] AND f['size']=(sqr(resolution)*2+8)*5000
-          ? f['path'].changeFileExt('')
-          : void;
-        end).unique.pEach(f,compressSet(f),OR));
+  while(pendingCompressions.pEach(f,compressSet(f),OR));
   log('Finished');
 end;
 

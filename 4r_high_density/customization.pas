@@ -2,11 +2,11 @@ UNIT customization;
 INTERFACE
 USES vectors,commandLineHandling;
 CONST
-  SYMMETRIC_CONTINUATION=20;
+  SYMMETRIC_CONTINUATION=2;
   dt                    =0.05;
   GRID_SIZE             =1;
 
-  REPULSION_LINEAR   =1.1*8;
+  REPULSION_LINEAR   =1.1*0.5/128;
 
   ANNIHILATION_THRESHOLD=0;
   DIFFUSION_BY_VELOCITY =0;
@@ -28,8 +28,9 @@ FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR d:double;
-  begin    
-    d:=1/(sqr(rx*rx+ry*ry));
+  begin      
+    d:=rx*rx+ry*ry;
+    if d>32*32 then d:=0 else d:=1/128;
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;

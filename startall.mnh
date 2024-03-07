@@ -21,6 +21,78 @@ execute(execName:String,replay:Boolean)->
                       replay ? 'replay' : void,
                       positionParameter(execName)].{$L==[] ? void : $L});
 
+mutable workAllowed:=true;
+mutable alreadyExamined:=[].toSet;
+mutable runningTasks:=0;
+datastore SEVEN_ZIP_PATH:=void;
+
+blocked->begin
+  local scanInterval:=30;
+  local lastQuery:=scriptTime-scanInterval;
+  local lastResponse:=[];
+save;
+  scriptTime+scanInterval>lastQuery
+  ? begin
+      lastResponse:=runningGravTasks.map((n)->n.changeFileExt('')).relativeFileName.toSet;
+      lastQuery:=scriptTime;
+    end
+  : void;
+  lastResponse;
+end;
+
+@SuppressUnusedWarning
+ensure7zp:=SEVEN_ZIP_PATH.isVoid OR !fileExists(SEVEN_ZIP_PATH)
+? SEVEN_ZIP_PATH:=begin
+    log("Paths of 7z.exe is not set.\nThis may take a while...");
+    local all:=allFiles(folders('C:\*prog*')|getEnv['USERPROFILE'],'7z.exe');
+    all.sort((x,y)->x.length<=y.length).head;
+  end
+: void;
+
+compressSet(s,wait:Boolean)->(!wait OR (workAllowed AND s not in alreadyExamined)) AND begin
+  alreadyExamined|=s;
+  local _log:=wait ? {tPrint@$params}
+                   : (...)->void;
+  local set:=files(['.anim','.exe','.dump'].map((e)->s.changeFileExt(e))).sort;
+  local targetMnh:=s.changeFileExt('.mnh');
+  fileExists(targetMnh) AND (set.size==3) ? begin
+    _log('Executing ',targetMnh,' check');
+    execPipeless(executor,[targetMnh.expandedFileName,'check']);
+  end : void;
+  local targetZip:=s.changeFileExt('.dat');
+  set.size==3                                               ? void : return _log('Set ',s,' is incomplete') orElse false;
+  (!fileExists(targetZip) OR !fileExists(targetMnh))        ? void : return _log('Set ',s,' is already compressed') orElse false;
+  (set[2].expandedFileName.relativeFileName not in blocked) ? void : return _log('Set ',s,' is blocked') orElse false;
+  deleteFile(targetZip);
+
+  wait ? waitForFreeCapacity()() : void;
+  workAllowed OR !wait ? begin
+    _log('Writing ',targetZip);
+    runningTasks+=1;
+    local execResult:=exec(SEVEN_ZIP_PATH,['u','-mx9','-mmt1','-sfx',targetZip]|set);
+    runningTasks-=1;
+    execResult[1]==0
+    ? void
+    : return _log('Failed for set: ',s,"\n",join(execResult[0],"\n"));
+
+    _log('Writing ',targetMnh);
+    local linesToWrite:=[
+       'main("check")->fileInfo('+set[0].extractFileName.escape+')["size"]>'&fileInfo(set[0])['size']&' OR !fileExists(myPath.changeFileExt(".dat")) ? begin deleteFile(myPath.changeFileExt(".dat")); deleteFile(myPath); end : void;',
+       'main->'&set.each(n,format('fileExists(%s)',n.extractFileName.escape)).join(' AND ')&' ? main("check") : begin changeDirectory(myPath.extractFileDirectory); execPipeless(myPath.changeFileExt(".dat")); end;'];
+    writeFileLines(targetMnh,linesToWrite);
+    _log('Done (set: ',s,') running: ',runningTasks);
+    true;
+  end : false;
+end;
+
+pendingCompressions->allFiles('.','*.anim').fileInfo.map((f)->begin
+  //Filter by anim file...
+  local resolution:=f['path'].extractFileNameOnly.clean(['0'..'9'],'').softCast;
+  resolution in [32,64,128,256] AND f['size']=(sqr(resolution)*2+8)*5000
+  ? f['path'].changeFileExt('')
+  : void;
+end).filter((s)->s not in alreadyExamined).unique;
+
 synchronized gravExes->begin
   local result:=void;
   local resultTime:=-600;
@@ -77,41 +149,79 @@ exeSorting(L:StringCollection)->L.map((n)->n.extractFileNameOnly.clean(['0'..'9'
 
 start(replay:Boolean)->begin
   assertUniqueInstance;
+  local consoleWidth:=exec('cmd',['/C','mode','con'])[0].filter((line)->line.matches(': *\d+$')).head(2).trailing.split(':')[1].trim.softCast-1;
   local firstQuestion:=true;
   local userSignal:='';
   localAsync({while(true,begin
     userSignal:=ask('Next element in queue...',[SKIP,FORCE,QUIT],firstQuestion);
     firstQuestion:=false;
   end)});
+  local compressionFutures:=[];
 
   local startedCount:=0;
-  gravExes
-  .exeSorting
-  .each(execName,!fileExists(execName)        ? tPrint('          ',execName.relativeFileName,' has been deleted') :
-                 execName in runningGravTasks ? tPrint('          ',execName.relativeFileName,' is already running')
-                 : begin
-                     userSignal:=userSignal==QUIT ? QUIT : '';
-                     local wait:=waitForFreeCapacity;
-                     local load:=getCpuLoadHistory(32);
-                     while((!peekFuture(wait) OR
-                            (runningGravTasks.size>=MAX_GRAV_INSTANCES)) AND (userSignal=='') ,begin
-                       tPrintD('Next:     ',execName.relativeFileName,"; CPU: ",BLOCKS[load].join,load.trailing,'%');
-                       load:=getCpuLoadHistory(32);
-                       sleep(0.1);
-                     end);
-                     userSignal in [SKIP,QUIT]
-                     ? tPrint('Skipping: ',execName.relativeFileName)
-                     : begin
-                         userSignal==FORCE
-                         ? tPrint('Forced:   ',execName.relativeFileName)
-                         : tPrint('Starting: ',execName.relativeFileName);
-                         execute(execName,replay);
-                         startedCount+=1;
-                         invalidateRunningGravTasks;
-                       end;
-                   end);
+
+  local getNextTask:=toIteratableExpression(()->begin
+    local pendingExe:=gravExes.exeSorting;
+    local tasks:=[];
+  save;
+    tasks.size = 0
+    ? begin
+        tasks:=pendingCompressions;
+        tasks.size = 0
+        ? begin
+            tasks|=pendingExe.head;
+            pendingExe:=pendingExe.tail;
+          end
+        : void;
+      end
+    : void;
+    local result:=userSignal==QUIT ? generatorClosed : begin
+      tasks.size=0
+      ? generatorClosed
+      : tasks.head;
+    end;
+    tasks:=tasks.tail;
+    result;
+  end);
+
+
+  getNextTask
+  .each(execName,execName in runningGravTasks ? tPrint('          ',execName.relativeFileName,' is already running') :
+  begin
+    local isExe:=execName.extractFileExt='.exe';
+    local name:=isExe
+                ? execName.relativeFileName
+                : f'{execName}->C';
+    local startMethod:=isExe
+                       ? ()->execute(execName,replay)
+                       : ()->begin
+                               alreadyExamined|=execName;
+                               compressionFutures|=[future(::compressSet,[execName,false])];
+                             end;
+
+    userSignal:=userSignal==QUIT ? QUIT : '';
+    local wait:=waitForFreeCapacity;
+    local load:=getCpuLoadHistory(consoleWidth-length(name)-29);
+    while((!peekFuture(wait) OR
+           (runningGravTasks.size>=MAX_GRAV_INSTANCES) AND isExe) AND (userSignal=='') ,begin
+      tPrintD('Next:     ',name,"; CPU: ",BLOCKS[load].join,format('%3d',load.trailing),'%');
+      load:=getCpuLoadHistory(consoleWidth-length(name)-29);
+      sleep(0.1);
+    end);
+    userSignal in [SKIP,QUIT]
+    ? tPrint('Skipping: ',name)
+    : begin
+        userSignal==FORCE
+        ? tPrint('Forced:   ',name)
+        : tPrint('Starting: ',name);
+        startMethod();
+        startedCount+=1;
+        invalidateRunningGravTasks;
+      end;
+  end);
   tPrint(startedCount,' tasks started');
   tPrint(runningGravTasks.size,' tasks are running: ',join("\n  "&sort(runningGravTasks)));
+  compressionFutures.each(fut,peekFuture(fut) ? void : tPrint('Waiting for completion of compression future'),fut());
 end;
 
 //*Start in calculation mode
@@ -172,7 +282,6 @@ save;
   ? trail.trailing(trailSize)
   : trail;
 end};
-
 
 
 //*Watch all log files

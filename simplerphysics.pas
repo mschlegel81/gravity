@@ -43,6 +43,20 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
       temp:T_2dVector;
 
       attractionField:T_vectorField;
+
+  PROCEDURE addSymmetricPressureTerm(CONST i,j:longint; CONST factor:double);
+    begin
+      attractionField[i           ,j           ,0]+=factor*REPULSION_LINEAR;
+      attractionField[SYS_SIZE-1-i,j           ,0]-=factor*REPULSION_LINEAR;
+      attractionField[j           ,i           ,1]+=factor*REPULSION_LINEAR;
+      attractionField[j           ,SYS_SIZE-1-i,1]-=factor*REPULSION_LINEAR;
+      if j=0 then exit;
+      attractionField[i           ,SYS_SIZE-j  ,0]+=factor*REPULSION_LINEAR;
+      attractionField[SYS_SIZE-1-i,SYS_SIZE-j  ,0]-=factor*REPULSION_LINEAR;
+      attractionField[SYS_SIZE-j  ,i           ,1]+=factor*REPULSION_LINEAR;
+      attractionField[SYS_SIZE-j  ,SYS_SIZE-1-i,1]-=factor*REPULSION_LINEAR;
+    end;
+
   begin
     if reinitializeAttractionFactors(stepIndex) or not(attractionInitialized) then begin
       log.append('(Re)initializing attraction factors').appendLineBreak;
@@ -54,26 +68,10 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
           temp+=calculateAttraction(ix+symX*SYS_SIZE,iy+symY*SYS_SIZE);
         attractionField[ix,iy]:=temp;
       end;
-      attractionField[         0,         0,0]+=0.8*REPULSION_LINEAR;
-      attractionField[SYS_SIZE-1,         0,0]-=0.8*REPULSION_LINEAR;
-      attractionField[         0,         1,0]+=0.1*REPULSION_LINEAR;
-      attractionField[SYS_SIZE-1,         1,0]-=0.1*REPULSION_LINEAR;
-      attractionField[         0,SYS_SIZE-1,0]+=0.1*REPULSION_LINEAR;
-      attractionField[SYS_SIZE-1,SYS_SIZE-1,0]-=0.1*REPULSION_LINEAR;
-
-      attractionField[         0,         0,1]+=0.8*REPULSION_LINEAR;
-      attractionField[         0,SYS_SIZE-1,1]-=0.8*REPULSION_LINEAR;
-      attractionField[         1,         0,1]+=0.1*REPULSION_LINEAR;
-      attractionField[         1,SYS_SIZE-1,1]-=0.1*REPULSION_LINEAR;
-      attractionField[SYS_SIZE-1,         0,1]+=0.1*REPULSION_LINEAR;
-      attractionField[SYS_SIZE-1,SYS_SIZE-1,1]-=0.1*REPULSION_LINEAR;
-
-
+      addSymmetricPressureTerm(0,0,0.8);
+      addSymmetricPressureTerm(0,1,0.1);
       cachedAttraction:=accelFFT(attractionField);
     end;
-
-
-
     attractionInitialized:=true;
   end;
 
@@ -173,7 +171,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
           if capping and (mass>=UPPER_BLACK_LEVEL) then begin //cap speed
             //squared speed:
             f:=sqr(v[0])+sqr(v[1]);
-            if f>SPEED_CAP*SPEED_CAP then v*=SPEED_CAP/sqrt(f);
+            if f>SPEED_CAP*SPEED_CAP then v*=0.99*SPEED_CAP/sqrt(f);
           end;
 
           if (ANNIHILATION_FACTOR>0) and (mass>ANNIHILATION_THRESHOLD)
@@ -277,12 +275,6 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
       value:=newState;
     end;
 
-  PROCEDURE removeAccelerationAcrossBoundary;
-    VAR i:longint;
-    begin
-      for i:=0 to SYS_SIZE-1 do staggeredAcceleration[SYS_SIZE-1,i,0]:=0;
-      for i:=0 to SYS_SIZE-1 do staggeredAcceleration[i,SYS_SIZE-1,1]:=0;
-    end;
 
   VAR subStepsTaken:longint=0;
       dtEff:double;

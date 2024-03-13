@@ -1,5 +1,5 @@
 #!C:\bin\mnh_light.exe
-USE startall,cpuMonitor;
+USE startall;
 
 @SuppressUnusedWarning
 cancelTask:=async({begin ask('',['Quit'],false); log('Quit message recieved'); workAllowed:=false; end});
@@ -20,7 +20,7 @@ main('all')->begin
           resolution in [32,64,128,256]
           ? f['path'].changeFileExt('')
           : void;
-        end).unique.pEach(f,compressSet(f),OR));
+        end).unique.pEach(f,compressSet(f,true),OR));
   log('Finished');
 end;
 
@@ -31,6 +31,6 @@ main(firstPattern,...)->begin
     .flatten
     .map((f)->f.expandedFileName.changeFileExt(''))
     .unique
-    .pEach(f,compressSet(f));
+    .pEach(f,compressSet(f,true));
   log('Finished');
 end;

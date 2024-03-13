@@ -1,14 +1,14 @@
 object GravMainForm: TGravMainForm
-  Left = 0
+  Left = 827
   Height = 512
-  Top = 0
+  Top = 264
   Width = 512
   Caption = 'GravMainForm'
   ClientHeight = 512
   ClientWidth = 512
   OnCloseQuery = FormCloseQuery
   OnCreate = FormCreate
-  LCLVersion = '2.2.2.0'
+  LCLVersion = '3.0.0.3'
   object Image1: TImage
     Left = 0
     Height = 512
@@ -18,7 +18,9 @@ object GravMainForm: TGravMainForm
     Align = alClient
     Center = True
     OnClick = Image1Click
+    ParentShowHint = False
     Proportional = True
+    ShowHint = True
     Stretch = True
   end
   object IdleTimer1: TIdleTimer

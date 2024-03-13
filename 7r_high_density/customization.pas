@@ -6,7 +6,7 @@ CONST
   dt                    =0.05;
   GRID_SIZE             =1;
 
-  REPULSION_LINEAR   =1;
+  REPULSION_LINEAR   =0;
 
   ANNIHILATION_THRESHOLD=0;
   DIFFUSION_BY_VELOCITY =0;
@@ -27,10 +27,11 @@ VAR range:double=0;
     
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
   begin    
-    range:=64-64*cos(timeStepIndex*2*pi/1000);     
+    range:=128*sqrt(0.5-0.5*cos(timeStepIndex*6*pi/5000));
     result:=abs(range-lastRange)>1;
     if result then lastRange:=range;
-    if range<32 then strength:=1 else strength:=sqr(32/range);    
+    if range<32 then strength:=2 else strength:=sqr(32/range)*2;
+    if (timeStepIndex>=1667) and (timeStepIndex<3333) then strength:=-strength;
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
@@ -38,7 +39,7 @@ FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   begin
     d:=sqrt(rx*rx+ry*ry);
 	if d>range then exit(zeroVec);
-	d:=(-sin(2*pi*d/range))*strength/d;
+	d:=(-cos(1.5*pi*d/range))*strength/d*(1-d/range);
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;

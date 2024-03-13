@@ -5,7 +5,8 @@ UNIT gravityMain;
 INTERFACE
 
 USES
-  Classes, sysutils, Forms, Controls, Graphics, Dialogs, ExtCtrls,commandLineHandling,basicGraphics,simplerPhysics;
+  Classes, sysutils, Forms, Controls, Graphics, Dialogs, ExtCtrls,
+  PopupNotifier, commandLineHandling, basicGraphics, simplerPhysics;
 
 TYPE
 
@@ -135,6 +136,7 @@ PROCEDURE TGravMainForm.FormCreate(Sender: TObject);
   var positionIndex: longint;
   begin
     Application.title:=appTitle;
+    image1.Hint:=paramstr(0);
     caption:=appTitle;
     queue.create;
     beginThread(@calcThread,@queue);

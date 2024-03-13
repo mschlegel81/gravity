@@ -1,5 +1,6 @@
 MY_IPC_ID:='CPU_MONITOR_DEMON';
 mutable cpuLoad:=[0];
+mutable cpuLoadQueryCount:=0;
 
 private ensure_server->
   isIpcServerRunning(MY_IPC_ID)
@@ -29,69 +30,72 @@ waitForFreeCapacity->begin
   ensure_server;
   future({begin
     local myId:=[systime,scriptTime,intRandom(2^256)].toString.sha256;
-    while(!(true==sendIpcRequest(MY_IPC_ID,['CAN_START',myId])), sleep(1));
+    while(!(true==sendIpcRequest(MY_IPC_ID,['CAN_START',myId])), sleep(1+2*random));
     true;
   end});
 end;
 
 mutable lastQueried:=0;
-mutable queued:=[];
-mutable staleAt:=[].toMap;
-mutable dontStartBefore:=scriptTime+10;
-
+mutable hasKillRequest:=false;
 
 THRESHOLD_CAPACITY:=75;
 
+handleRequest(request)->begin
+  local queued:=[];
+  local staleAt:=[].toMap;
+  local dontStartBefore:=10;
+save;
+  request=='KILL'
+  ? begin
+      hasKillRequest:=true;
+    end
+  : request.isList(2) AND request[0]='CAN_START'
+  ? begin
+      lastQueried:=scriptTime;
+      //Enqueue if not present yet
+      local id:=request[1];
+      id in queued ? void : log('New ID') orElse queued|=id;
+      staleAt[id]:=scriptTime+10;
+
+      while(queued.size>1 AND scriptTime>staleAt[queued.head],begin
+        local drop:=queued.head;
+        log(drop,' has gone stale');
+        staleAt>>drop;
+        queued:=queued.tail;
+      end);
+
+      log('id   : ',id,
+        "\nqueue: ",queued.join("\n       "),'  (',queued.size,')',
+        "\nload : ",(cpuLoad-[cpuLoad.size-1..0]).agg(max));
+      id==queued.head AND (cpuLoadQueryCount>=dontStartBefore) AND (cpuLoad-[cpuLoad.size-1..0]<THRESHOLD_CAPACITY).agg(and)
+      ? begin
+          queued:=queued.tail;
+          staleAt[id]:=void;
+          dontStartBefore:=cpuLoadQueryCount+2;
+          note('-> START');
+          true;
+        end
+      : begin
+          note('-> WAIT');
+          false;
+        end;
+    end
+  : begin
+      lastQueried:=scriptTime;
+      cpuLoad;
+    end;
+end;
+
 main->begin
   freeConsole;
-  startIpcServer(MY_IPC_ID,(request)->begin
-    request=='KILL'
-    ? begin
-        lastQueried:=scriptTime-600;
-        true;
-      end
-    : request.isList(2) AND request[0]='CAN_START'
-    ? begin
-        lastQueried:=scriptTime;
-        //Enqueue if not present yet
-        local id:=request[1];
-        id in queued ? void : log('New ID') orElse queued|=id;
-        staleAt[id]:=scriptTime+10;
-
-        while(queued.size>1 AND scriptTime>staleAt[queued.head],begin
-          local drop:=queued.head;
-          log(drop,' has gone stale');
-          staleAt>>drop;
-          queued:=queued.tail;
-        end);
-
-        log('id   : ',id,
-          "\nqueue: ",queued.join("\n       "),'  (',queued.size,')',
-          "\nload : ",(cpuLoad-[cpuLoad.size-1..0]).agg(max));
-        id==queued.head AND (scriptTime>dontStartBefore) AND (cpuLoad-[cpuLoad.size-1..0]<THRESHOLD_CAPACITY).agg(and)
-        ? begin
-            queued:=queued.tail;
-            staleAt[id]:=void;
-            dontStartBefore:=scriptTime+1;
-            note('->START');
-            true;
-          end
-        : begin
-            note('->WAIT');
-            false;
-          end;
-      end
-    : begin
-        lastQueried:=scriptTime;
-        cpuLoad;
-      end;
-  end);
+  startIpcServer(MY_IPC_ID,::handleRequest);
   hideConsole;
   local q:=round(scriptTime);
-  while(scriptTime<lastQueried+60,begin
+  while((scriptTime<lastQueried+60) AND !hasKillRequest,begin
     sleepUntil(q+=1);
     local l:=getCPULoadPercentage;
     cpuLoad:=trailing(cpuLoad|l,256);
+    cpuLoadQueryCount+=1;
     q mod 30=0 ? callMemoryCleaner : void;
   end);
 end;

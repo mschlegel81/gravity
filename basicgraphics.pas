@@ -297,8 +297,6 @@ TYPE T_nodeKind=(intermediary,leaf);
          FUNCTION getBit(CONST index:longint):boolean;
        public
          CONSTRUCTOR create;
-//         CONSTRUCTOR create(CONST rawData:ansistring);
-//         CONSTRUCTOR create(CONST prevArray:T_bitArray; CONST nextBit:boolean);
          DESTRUCTOR destroy;
          PROCEDURE append(CONST nextBit:boolean); inline;
          PROCEDURE append(CONST arr:T_bitArray; CONST finalAppend:boolean=false);
@@ -308,8 +306,6 @@ TYPE T_nodeKind=(intermediary,leaf);
          FUNCTION getRawDataAsString:ansistring;
          FUNCTION getBitString:ansistring;
          FUNCTION bits:T_arrayOfBoolean;
-         //FUNCTION nextBit:boolean;
-         //FUNCTION hasNextBit(VAR fileStream:TFileStream):boolean;
      end;
      T_encodeTable=array[-1023..1023] of T_bitArray;
 
@@ -324,128 +320,96 @@ TYPE T_nodeKind=(intermediary,leaf);
       end else result:=false;
     end;
 
-  CONSTRUCTOR T_bitArray.create;
-    begin
-      setLength(data,0);
-      datFill:=0;
-      trashBits:=0;
-      cursorIndex:=0;
-    end;
+CONSTRUCTOR T_bitArray.create;
+  begin
+    setLength(data,0);
+    datFill:=0;
+    trashBits:=0;
+    cursorIndex:=0;
+  end;
 
-//  CONSTRUCTOR T_bitArray.create(CONST rawData: ansistring);
-//    VAR i:longint;
-//    begin
-//      setLength(data,length(rawData));
-//      for i:=0 to length(data)-1 do data[i]:=ord(rawData[i+1]);
-//      datFill:=length(data);
-//      trashBits:=0;
-//      cursorIndex:=0;
-//    end;
-//
-//  CONSTRUCTOR T_bitArray.create(CONST prevArray: T_bitArray; CONST nextBit: boolean);
-//    VAR i:longint;
-//    begin
-//      setLength(data,length(prevArray.data));
-//      for i:=0 to length(data)-1 do data[i]:=prevArray.data[i];
-//      trashBits:=prevArray.trashBits;
-//      datFill:=prevArray.datFill;
-//      append(nextBit);
-//      cursorIndex:=0;
-//    end;
-//
-  DESTRUCTOR T_bitArray.destroy;
-    begin
-      setLength(data,0);
-      trashBits:=0;
-    end;
+DESTRUCTOR T_bitArray.destroy;
+  begin
+    setLength(data,0);
+    trashBits:=0;
+  end;
 
-  PROCEDURE T_bitArray.append(CONST nextBit: boolean);
-    begin
-      if trashBits=0 then begin
-        if datFill>=length(data) then setLength(data,1+round(1.1*datFill));
-        inc(datFill);
-        data[datFill-1]:=0;
-        trashBits:=7;
-        if nextBit then data[datFill-1]:=data[datFill-1] or (1 shl trashBits);
-      end else begin
-        dec(trashBits);
-        if nextBit then data[datFill-1]:=data[datFill-1] or (1 shl trashBits);
+PROCEDURE T_bitArray.append(CONST nextBit: boolean);
+  begin
+    if trashBits=0 then begin
+      if datFill>=length(data) then setLength(data,1+round(1.1*datFill));
+      inc(datFill);
+      data[datFill-1]:=0;
+      trashBits:=7;
+      if nextBit then data[datFill-1]:=data[datFill-1] or (1 shl trashBits);
+    end else begin
+      dec(trashBits);
+      if nextBit then data[datFill-1]:=data[datFill-1] or (1 shl trashBits);
+    end;
+  end;
+
+PROCEDURE T_bitArray.append(CONST arr: T_bitArray; CONST finalAppend: boolean);
+  VAR i:longint;
+      b:boolean;
+  begin
+    if finalAppend then begin
+      i:=0;
+      while (trashBits<>0) and (i<arr.size) do begin
+        append(arr[i]);
+        inc(i);
       end;
-    end;
+    end else for b in arr.bits do append(b);
+  end;
 
-  PROCEDURE T_bitArray.append(CONST arr: T_bitArray; CONST finalAppend: boolean);
-    VAR i:longint;
-        b:boolean;
-    begin
-      if finalAppend then begin
-        i:=0;
-        while (trashBits<>0) and (i<arr.size) do begin
-          append(arr[i]);
-          inc(i);
-        end;
-      end else for b in arr.bits do append(b);
-    end;
+PROCEDURE T_bitArray.parseString(CONST stringOfZeroesAndOnes: ansistring);
+  VAR i:longint;
+  begin
+    setLength(data,0);
+    trashBits:=0;
+    for i:=1 to length(stringOfZeroesAndOnes) do append(stringOfZeroesAndOnes[i]='1');
+  end;
 
-  PROCEDURE T_bitArray.parseString(CONST stringOfZeroesAndOnes: ansistring);
-    VAR i:longint;
-    begin
-      setLength(data,0);
-      trashBits:=0;
-      for i:=1 to length(stringOfZeroesAndOnes) do append(stringOfZeroesAndOnes[i]='1');
-    end;
+FUNCTION T_bitArray.size: longint;
+  begin
+    result:=datFill shl 3-trashBits;
+  end;
 
-  FUNCTION T_bitArray.size: longint;
-    begin
-      result:=datFill shl 3-trashBits;
-    end;
+FUNCTION T_bitArray.getRawDataAsString: ansistring;
+  VAR i:longint;
+  begin
+    result:='';
+    for i:=0 to datFill-1 do result:=result+chr(data[i]);
+  end;
 
-  FUNCTION T_bitArray.getRawDataAsString: ansistring;
-    VAR i:longint;
-    begin
-      result:='';
-      for i:=0 to datFill-1 do result:=result+chr(data[i]);
-    end;
+FUNCTION T_bitArray.getBitString: ansistring;
+  VAR i:longint;
+  begin
+    result:='';
+    for i:=0 to size-1 do if bit[i]
+    then result:=result+'1'
+    else result:=result+'0';
+  end;
 
-  FUNCTION T_bitArray.getBitString: ansistring;
-    VAR i:longint;
-    begin
-      result:='';
-      for i:=0 to size-1 do if bit[i]
-      then result:=result+'1'
-      else result:=result+'0';
+FUNCTION T_bitArray.bits:T_arrayOfBoolean;
+  CONST M:array[0..7] of byte=(1, 2, 4,  8,
+                              16,32,64,128);
+  VAR i:longint;
+      k:longint=0;
+  begin
+    initialize(result);
+    setLength(result,datFill shl 3);
+    for i:=0 to datFill-1 do begin
+      result[k]:=(data[i] and M[7])>0; inc(k);
+      result[k]:=(data[i] and M[6])>0; inc(k);
+      result[k]:=(data[i] and M[5])>0; inc(k);
+      result[k]:=(data[i] and M[4])>0; inc(k);
+      result[k]:=(data[i] and M[3])>0; inc(k);
+      result[k]:=(data[i] and M[2])>0; inc(k);
+      result[k]:=(data[i] and M[1])>0; inc(k);
+      result[k]:=(data[i] and M[0])>0; inc(k);
     end;
-
-  FUNCTION T_bitArray.bits:T_arrayOfBoolean;
-    CONST M:array[0..7] of byte=(1, 2, 4,  8,
-                                16,32,64,128);
-    VAR i:longint;
-        k:longint=0;
-    begin
-      initialize(result);
-      setLength(result,datFill shl 3);
-      for i:=0 to datFill-1 do begin
-        result[k]:=(data[i] and M[7])>0; inc(k);
-        result[k]:=(data[i] and M[6])>0; inc(k);
-        result[k]:=(data[i] and M[5])>0; inc(k);
-        result[k]:=(data[i] and M[4])>0; inc(k);
-        result[k]:=(data[i] and M[3])>0; inc(k);
-        result[k]:=(data[i] and M[2])>0; inc(k);
-        result[k]:=(data[i] and M[1])>0; inc(k);
-        result[k]:=(data[i] and M[0])>0; inc(k);
-      end;
-      setLength(result,size);
-    end;
-
-  //FUNCTION T_bitArray.nextBit: boolean;
-  //  begin
-  //    result:=getBit(cursorIndex);
-  //    inc(cursorIndex);
-  //  end;
-  //
-  //FUNCTION T_bitArray.hasNextBit(VAR fileStream:TFileStream): boolean;
-  //  begin
-  //    result:=cursorIndex<size;
-  //  end;
+    setLength(result,size);
+  end;
 
 PROCEDURE buildCode(OUT decodeRoot:P_node; OUT encodeTable:T_encodeTable);
   VAR table:array [0..1023*2] of P_builderNode;
@@ -2672,8 +2636,15 @@ PROCEDURE T_rgbPicture.writeCompressed(fileStream:TFileStream; CONST previous:P_
   var i: longint;
   begin
     if previous=nil
-    then for i:=0 to SYS_SIZE*SYS_SIZE-1 do encode(pixels[i])
-    else for i:=0 to SYS_SIZE*SYS_SIZE-1 do encode(pixels[i]-previous^.Pixels[i]);
+    then for i:=0 to SYS_SIZE*SYS_SIZE-1 do begin
+      if pixels[i]<0    then pixels[i]:=0 else
+      if pixels[i]>1023 then pixels[i]:=1023;
+      encode(pixels[i]);
+    end else for i:=0 to SYS_SIZE*SYS_SIZE-1 do begin
+      if pixels[i]<0    then pixels[i]:=0 else
+      if pixels[i]>1023 then pixels[i]:=1023;
+      encode(pixels[i]-previous^.Pixels[i]);
+    end;
     flushBuffer;
   end;
 

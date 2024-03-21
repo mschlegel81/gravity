@@ -2617,9 +2617,7 @@ FUNCTION T_rgbPicture.loadCompressed(fileStream:TFileStream; CONST previous:P_rg
     begin
       node:=decodeRoot;
       while node^.kind<>leaf do begin
-        if bufferCursor>=bufferFill then begin
-          if not(refillBuffer) then exit(0);
-        end;
+        if (bufferCursor>=bufferFill) and not(refillBuffer) then exit(0);
         node:=node^.child[buffer[bufferCursor]];
         inc(bufferCursor);
       end;
@@ -2640,8 +2638,9 @@ FUNCTION T_rgbPicture.loadCompressed(fileStream:TFileStream; CONST previous:P_rg
     result:=entriesRead=SYS_SIZE*SYS_SIZE;
     if result then begin
       mass:=0;
-      while (bufferCursor and 7)<>0 do inc(bufferCursor); //go forward until you reach a byte boundary
-      fileStream.Seek(bufferStartInStream+(bufferCursor shr 3),soBeginning);
+      p:=bufferCursor shr 3;
+      if p shl 3<bufferCursor then inc(p); //Round up to full byte
+      fileStream.Seek(bufferStartInStream+p,soBeginning);
     end else fileStream.Seek(p,soBeginning);
   end;
 
@@ -2652,7 +2651,7 @@ PROCEDURE T_rgbPicture.writeCompressed(fileStream:TFileStream; CONST previous:P_
   PROCEDURE flushBuffer;
     VAR toFlush:longint;
     begin
-      toFlush:=(bufferFill shr 3);
+      toFlush:=bufferFill shr 3;
       if toFlush shl 3<bufferFill then inc(toFlush); //Round up to full byte
       if toFlush>0 then fileStream.Write(buffer,toFlush);
       bufferFill:=0;

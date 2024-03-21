@@ -15,3 +15,4 @@ grav*.png
 /gravity.lps
 
 /startall.datastore1
+*.replay

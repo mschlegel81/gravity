@@ -8,6 +8,7 @@ object GravMainForm: TGravMainForm
   ClientWidth = 512
   OnCloseQuery = FormCloseQuery
   OnCreate = FormCreate
+  OnKeyDown = FormKeyDown
   LCLVersion = '3.0.0.3'
   object Image1: TImage
     Left = 0

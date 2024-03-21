@@ -1,130 +1,55 @@
 USE cpuMonitor;
 
-ENABLE_BACKGROUND_COMPRESSION:=true;
-
+mutable isStarter:=false;
 MAX_GRAV_INSTANCES:=12;
 datastore occupiedIndexes:=[].toMap;
 
-positionParameter(execName:String)->begin
-  local running:=runningGravTasks;
+
+@MaxAge=60
+memoized gravExes->allFiles('.','grav*.exe').map(::expandedFileName).map(::systemSpecificFilename);
+
+@MaxAge=1
+memoized forcedRunningGravTasks->getTaskInfo.map((i)->gravExes[!pos(gravExes,i['commandLine']).isInfinite][0]).toSet;
+
+runningGravTasks->begin
+  local running:=occupiedIndexes.getInner(0).intersect(forcedRunningGravTasks);
+  local timeout:=scriptTime+5;
   occupiedIndexes.getInner(0).minus(running).each(key,occupiedIndexes[key]:=void);
 save;
-  local occupied:=occupiedIndexes.getInner(1);
-  local i:=0; while(i in occupied,i+=1);
-  i>=MAX_GRAV_INSTANCES
+  (occupiedIndexes.size>=MAX_GRAV_INSTANCES OR !isStarter) AND scriptTime>timeout
   ? begin
-      callMemoryCleaner;
-      sleep(1);
-      running:=runningGravTasks;
-      occupiedIndexes.getInner(0).minus(running).each(key,occupiedIndexes[key]:=void);
-      occupied:=occupiedIndexes.getInner(1);
-      i:=0; while(i in occupied,i+=1);
+      running:=forcedRunningGravTasks;
+      timeout:=scriptTime+5;
     end
-  : occupiedIndexes.size>=(MAX_GRAV_INSTANCES+1) ? callMemoryCleaner : void;
-  occupiedIndexes[execName]:=i;
+  : void;
+  running;
+end;
+
+positionParameter(execName:String)->begin
+  local nextPP:=0;
+save;
+  while(nextPP in occupiedIndexes.getInner(1),nextPP+=1);
+  nextPP>=MAX_GRAV_INSTANCES
+  ? begin
+      nextPP:=0;
+      occupiedIndexes.getInner(0).minus(runningGravTasks).each(key,occupiedIndexes[key]:=void);
+      while(nextPP in occupiedIndexes.getInner(1),nextPP+=1);
+    end
+  : void;
+  occupiedIndexes[execName]:=nextPP;
   writeDataStores;
-  'pos='&i;
+  local P:=nextPP>=MAX_GRAV_INSTANCES ? void : 'pos='&nextPP;
+  nextPP+=1;
+  P;
 end;
 
 execute(execName:String,replay:Boolean)->
   execAsync(execName,[execName.matches('low_density') ? 'ld' :
                       execName.matches('high_density') ? 'hd' : void,
                       replay ? 'replay' : void,
-                      positionParameter(execName)].{$L==[] ? void : $L});
-
-mutable workAllowed:=true;
-mutable alreadyExamined:=[].toSet;
-mutable runningTasks:=0;
-datastore SEVEN_ZIP_PATH:=void;
-
-blocked->begin
-  local scanInterval:=30;
-  local lastQuery:=scriptTime-scanInterval;
-  local lastResponse:=[];
-save;
-  scriptTime+scanInterval>lastQuery
-  ? begin
-      lastResponse:=runningGravTasks.map((n)->n.changeFileExt('')).relativeFileName.toSet;
-      lastQuery:=scriptTime;
-    end
-  : void;
-  lastResponse;
-end;
-
-@SuppressUnusedWarning
-ensure7zp:=SEVEN_ZIP_PATH.isVoid OR !fileExists(SEVEN_ZIP_PATH)
-? SEVEN_ZIP_PATH:=begin
-    log("Paths of 7z.exe is not set.\nThis may take a while...");
-    local all:=allFiles(folders('C:\*prog*')|getEnv['USERPROFILE'],'7z.exe');
-    all.sort((x,y)->x.length<=y.length).head;
-  end
-: void;
-
-compressSet(s,wait:Boolean)->(!wait OR (workAllowed AND s not in alreadyExamined)) AND begin
-  alreadyExamined|=s;
-  local _log:=wait ? {begin tPrint@$params; void; end}
-                   : (...)->void;
-  local set:=files(['.anim','.exe','.dump'].map((e)->s.changeFileExt(e))).sort;
-  local targetMnh:=s.changeFileExt('.mnh');
-  fileExists(targetMnh) AND (set.size==3) ? begin
-    _log('Executing ',targetMnh,' check');
-    exec(executor,[targetMnh.expandedFileName,'check']);
-  end : void;
-  local targetZip:=s.changeFileExt('.dat');
-
-  set.size==3                                               ? void : return _log('Set ',s,' is incomplete') orElse false;
-  (!fileExists(targetZip) OR !fileExists(targetMnh))        ? void : return _log('Set ',s,' is already compressed') orElse false;
-  (set[2].expandedFileName.relativeFileName not in blocked) ? void : return _log('Set ',s,' is blocked') orElse false;
-  deleteFile(targetZip);
-
-  wait ? waitForFreeCapacity()() : void;
-  workAllowed OR !wait ? begin
-    _log('Writing ',targetZip);
-    runningTasks+=1;
-    local execResult:=exec(SEVEN_ZIP_PATH,['u','-mx6','-mmt1','-sfx',targetZip]|set);
-    runningTasks-=1;
-    execResult[1]==0
-    ? void
-    : return _log('Failed for set: ',s,"\n",join(execResult[0],"\n"));
-
-    _log('Writing ',targetMnh);
-    local linesToWrite:=[
-       'main("check")->fileInfo('+set[0].extractFileName.escape+')["size"]>'&fileInfo(set[0])['size']&' OR !fileExists(myPath.changeFileExt(".dat")) ? begin deleteFile(myPath.changeFileExt(".dat")); deleteFile(myPath); end : void;',
-       'main->'&set.each(n,format('fileExists(%s)',n.extractFileName.escape)).join(' AND ')&' ? main("check") : begin changeDirectory(myPath.extractFileDirectory); execPipeless(myPath.changeFileExt(".dat")); end;'];
-    writeFileLines(targetMnh,linesToWrite);
-    _log('Done (set: ',s,') running: ',runningTasks);
-    true;
-  end : false;
-end;
-
-synchronized gravExes->begin
-  local result:=void;
-  local resultTime:=-600;
-save;
-  scriptTime>resultTime+60
-  ? begin
-      result:=allFiles('.','grav*.exe').map(::expandedFileName).map(::systemSpecificFilename);
-      resultTime:=scriptTime;
-    end
-  : void;
-  result;
-end;
+                                          positionParameter(execName)].{$L==[] ? void : $L});
 
 mnhFiles->allFiles('.','*.mnh').filter((f)->f.extractFileDirectory<>'.' AND f.matches('grav\d+\.mnh'));
-
-IS_WATCHER:=$1=='w';
-
-@MaxAge=5
-memoized runningGravTasks->getTaskInfo.map((i)->gravExes[!pos(gravExes,i['commandLine']).isInfinite][0]).toSet;
-
-pendingCompressions->allFiles('.','*.anim').fileInfo.map((f)->begin
-  //Filter by anim file...
-  local resolution:=f['path'].extractFileNameOnly.clean(['0'..'9'],'').softCast;
-  resolution in [32,64,128,256] AND f['size']=(sqr(resolution)*2+8)*5000
-  ? f['path'].changeFileExt('')
-  : void;
-end).filter((s)->s not in alreadyExamined AND s.expandedFileName.changeFileExt('.exe').systemSpecificFilename not in runningGravTasks).unique;
-
 
 mutable toClear:=0;
 tPrint(...)->begin
@@ -154,6 +79,7 @@ QUIT:='quit';
 exeSorting(L:StringCollection)->L.map((n)->n.extractFileNameOnly.clean(['0'..'9'],'').softCast=>n).sort(1).sort(0).getInner(1);
 
 start(replay:Boolean)->begin
+  isStarter:=true;
   assertUniqueInstance;
   local consoleWidth:=exec('cmd',['/C','mode','con'])[0].filter((line)->line.matches(': *\d+$')).head(2).trailing.split(':')[1].trim.softCast-1;
   local firstQuestion:=true;
@@ -162,52 +88,15 @@ start(replay:Boolean)->begin
     userSignal:=ask('Next element in queue...',[SKIP,FORCE,QUIT],firstQuestion);
     firstQuestion:=false;
   end)});
-  local compressionFutures:=[];
 
   local startedCount:=0;
 
-  local getNextTask:=toIteratableExpression(()->begin
-    local pendingExe:=gravExes.exeSorting;
-    local tasks:=[];
-    begin
-      tasks:=pendingExe.head(MAX_GRAV_INSTANCES);
-      pendingExe:=pendingExe.tail(MAX_GRAV_INSTANCES);
-    end;
-  save;
-    tasks.size = 0
-    ? begin
-        tasks:=ENABLE_BACKGROUND_COMPRESSION ? pendingCompressions : [];
-        tasks.size = 0
-        ? begin
-            tasks|=pendingExe.head;
-            pendingExe:=pendingExe.tail;
-          end
-        : void;
-      end
-    : void;
-    local result:=userSignal==QUIT ? generatorClosed : begin
-      tasks.size=0
-      ? generatorClosed
-      : tasks.head;
-    end;
-    tasks:=tasks.tail;
-    result;
-  end);
-
-
-  getNextTask
-  .each(execName,execName in runningGravTasks ? tPrint('          ',execName.relativeFileName,' is already running') :
+  gravExes.exeSorting.each(execName,execName in runningGravTasks ? tPrint('          ',execName.relativeFileName,' is already running') :
   begin
     local isExe:=execName.extractFileExt='.exe';
     local name:=isExe
                 ? execName.relativeFileName
                 : f'{execName}->C';
-    local startMethod:=isExe
-                       ? ()->execute(execName,replay)
-                       : ()->begin
-                               alreadyExamined|=execName;
-                               compressionFutures|=[future(::compressSet,[execName,false])];
-                             end;
 
     userSignal:=userSignal==QUIT ? QUIT : '';
     local wait:=waitForFreeCapacity;
@@ -216,9 +105,6 @@ start(replay:Boolean)->begin
            (runningGravTasks.size>=MAX_GRAV_INSTANCES) AND isExe) AND (userSignal=='') ,begin
       tPrintD('Next:     ',name,"; CPU: ",BLOCKS[load].join,format('%3d',load.trailing),'%');
       load:=getCpuLoadHistory(consoleWidth-length(name)-29);
-      compressionFutures.size>0 AND peekFuture(compressionFutures[0])
-      ? compressionFutures:=compressionFutures.tail
-      : void;
       sleep(0.1);
     end);
     userSignal in [SKIP,QUIT]
@@ -227,14 +113,14 @@ start(replay:Boolean)->begin
         userSignal==FORCE
         ? tPrint('Forced:   ',name)
         : tPrint('Starting: ',name);
-        startMethod();
+        execute(execName,replay);
         startedCount+=1;
       end;
   end);
+  isStarter:=false;
   tPrint(startedCount,' tasks started');
-  tPrint(runningGravTasks.size,' tasks are running: ',join("\n  "&sort(runningGravTasks)));
-  tPrint(compressionFutures.size,' compressions are running or pending');
-  compressionFutures.each(fut,peekFuture(fut) ? void : tPrint('Waiting for completion of compression future #',index+1),fut());
+  local running:=forcedRunningGravTasks;
+  tPrint(running.size,' tasks are running: ',join("\n  "&sort(running)));
   tPrint('done');
 end;
 
@@ -247,7 +133,6 @@ main('r')->start(true);
 //*Decompress all compressed files
 main('d')->mnhFiles.map((script)->
   future((script_)->begin
-    waitForFreeCapacity;
     print('Starting ',script_);
     assert(exec(executor,[script])[1]==0,'Script ',script_,' failed');
     print(script,' executed successfully');
@@ -256,12 +141,13 @@ main('d')->mnhFiles.map((script)->
 
 
 //*Decompress compressed files matching pattern
-main('d',pattern)->mnhFiles.filter((script)->script.matches(pattern)).pEach(script,begin
-  print('Starting ',script);
-  waitForFreeCapacity()();
-  assert(exec(executor,[script])[1]==0,'Script ',script,' failed');
-  print(script,' executed successfully');
-end);
+main('d',pattern)->mnhFiles.filter((script)->script.matches(pattern)).map((script)->
+  future((script_)->begin
+    print('Starting ',script_);
+    assert(exec(executor,[script])[1]==0,'Script ',script_,' failed');
+    print(script,' executed successfully');
+  end,[script]))
+  .each(f,f());
 
 //*List executables (exe) and compressed executables (mnh)
 main('list')->begin
@@ -314,7 +200,7 @@ main('w')->begin
     answer=='-' ? printDirect("\rLines: ",linesTotal:=max(1,linesTotal-1),'  ') :
     answer==QUIT ? killSignal:=true : void;
   end); end});
-  local logs:=runningGravTasks
+  local logs:=forcedRunningGravTasks
     .sort((exeName)->occupiedIndexes[exeName] orElse Inf)
     .filter((e)->e.changeFileExt('.log').fileExists)
     .map((e)->begin
@@ -330,7 +216,7 @@ main('w')->begin
     local anyChanged:=false;
     scriptTime>=nextScanForNewTasks
     ? begin
-        local currentRunning:=runningGravTasks.sort((exeName)->occupiedIndexes[exeName] orElse Inf).filter((e)->e.changeFileExt('.log').fileExists);
+        local currentRunning:=forcedRunningGravTasks.sort((exeName)->occupiedIndexes[exeName] orElse Inf).filter((e)->e.changeFileExt('.log').fileExists);
         currentRunning.map((e)->e.relativeFileName.changeFileExt('')).sort == logs.getInner(0).sort
         ? void
         : begin

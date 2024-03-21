@@ -2,11 +2,11 @@ UNIT customization;
 INTERFACE
 USES vectors,commandLineHandling;
 CONST
-  SYMMETRIC_CONTINUATION=20;
+  SYMMETRIC_CONTINUATION=1;
   dt                    =0.05;
   GRID_SIZE             =1;
 
-  REPULSION_LINEAR   =2;
+  REPULSION_LINEAR   =1;
 
   ANNIHILATION_THRESHOLD=0;
   DIFFUSION_BY_VELOCITY =0;
@@ -26,10 +26,13 @@ VAR range:double=0;
 
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
   begin    
-    range:=SYS_SIZE/4*(0.5-0.5*cos(timeStepIndex*2*pi/1000));
-    result:=(range<5) or (abs(range-lastRange)>0.5);
-    strength:=sqr(range);
-    if strength>10 then strength:=10;    
+    range:=SYS_SIZE/3*(0.5-0.55*cos(timeStepIndex*6*pi/5000));
+    result:=(range<5) and (range>0) or (abs(range-lastRange)>0.5);
+    if range<0 then begin
+      range:=0;
+      strength:=0;
+    end else strength:=sqr(range)*0.1;
+    if strength>2 then strength:=2;
     if result then lastRange:=range;    
   end;
 

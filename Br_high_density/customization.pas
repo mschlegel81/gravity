@@ -6,7 +6,7 @@ CONST
   dt                    =0.05;
   GRID_SIZE             =1;
 
-  REPULSION_LINEAR   =4;
+  REPULSION_LINEAR   =1;
 
   ANNIHILATION_THRESHOLD=0;
   DIFFUSION_BY_VELOCITY =0;
@@ -20,22 +20,23 @@ FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel:T_vectorField);
 IMPLEMENTATION
-
+VAR shift:double;
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
   begin
-    result:=false;
+    shift:=timeStepIndex/1000*2*pi;
+    result:=(timeStepIndex and 31)=0;
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
-  VAR d:double;
-  begin    
+  VAR d:double;      
+  begin
     d:=rx*rx+ry*ry;
-    if d<1
-    then exit(zeroVec)
-    else d:=2/sqr(d);
+    d:=0.2*
+       (cos(abs(rx)/32*2*pi-shift))*
+       (cos(abs(ry)/32*2*pi+shift))/d;       
     result[0]:=rx*d;
     result[1]:=ry*d;
-  end;    
+  end;
 
 FUNCTION getInitialState: T_systemState;
   VAR i,j:longint;      

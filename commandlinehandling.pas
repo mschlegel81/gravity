@@ -11,6 +11,7 @@ FUNCTION hasCloseFlag:boolean;
 FUNCTION initialDensityVariant:T_initialDensityEnum;
 FUNCTION hasPositionParameter(OUT index:longint):boolean;
 
+FUNCTION fileName_replay:string;
 FUNCTION fileName_anim:string;
 FUNCTION fileName_dump:string;
 FUNCTION filename_txt:string;
@@ -70,6 +71,9 @@ FUNCTION hasPositionParameter(OUT index:longint):boolean;
       if result then exit(result);
     end;
   end;
+
+FUNCTION fileName_replay:string;
+  begin result:=ChangeFileExt(paramStr(0),'.replay'); end;
 
 FUNCTION fileName_anim:string;
   begin result:=ChangeFileExt(paramStr(0),'.anim'); end;

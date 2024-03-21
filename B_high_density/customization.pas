@@ -6,47 +6,49 @@ CONST
   dt                    =0.05;
   GRID_SIZE             =1;
 
-  REPULSION_LINEAR   =4;
+  REPULSION_LINEAR   =1;
 
-  ANNIHILATION_THRESHOLD=0;
-  DIFFUSION_BY_VELOCITY =0;
-  DIFFUSION_BASE        =0;
-  ANNIHILATION_FACTOR   =0.01;
-VAR 
-  REGROWTH_FACTOR    :double =0;
+  ANNIHILATION_THRESHOLD=1E10;
+  ANNIHILATION_FACTOR   =0;
+
+  REGROWTH_FACTOR=0;
+  DIFFUSION_BY_VELOCITY=0;
+  DIFFUSION_BASE       =0;
   
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel:T_vectorField);
 IMPLEMENTATION
-
+VAR shift:double;
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
   begin
-    result:=false;
+    shift:=timeStepIndex/1000*2*pi;
+    result:=(timeStepIndex and 31)=0;
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
-  VAR d:double;
-  begin    
+  VAR d:double;      
+  begin
     d:=rx*rx+ry*ry;
-    if d<1
-    then exit(zeroVec)
-    else d:=2/sqr(d);
+    d:=0.2*
+       (cos(abs(rx)/32*2*pi-shift))*
+       (cos(abs(ry)/32*2*pi+shift))/d;       
     result[0]:=rx*d;
     result[1]:=ry*d;
-  end;    
+  end;
 
 FUNCTION getInitialState: T_systemState;
-  VAR i,j:longint;      
+  VAR i,j:longint;
+      massFactor:double;
   begin
     case initialDensityVariant of
-      id_low:  REGROWTH_FACTOR:=0.01;
-      id_high: REGROWTH_FACTOR:=0.1 ;
-      else     REGROWTH_FACTOR:=1   ;
+      id_low:  massFactor:= 0.1;
+      id_high: massFactor:= 1;
+      else     massFactor:= 10;
     end;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with result[i,j] do begin
-      mass:=0.1+0.001*random;
+      mass:=massFactor+0.001*random;
       p:=zeroVec;
     end;
   end;

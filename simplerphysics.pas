@@ -150,14 +150,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with newState[i,j] do begin mass:=0; p:=zeroVec; a:=zeroVec; end;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
         with value[i,j] do begin
-          //if (ANNIHILATION_FACTOR>0) and (mass>ANNIHILATION_THRESHOLD)
-          //then begin
-          //  wx:=REGROWTH_FACTOR-mass*(mass-ANNIHILATION_THRESHOLD)*ANNIHILATION_FACTOR;
-          //  wy:=ANNIHILATION_FACTOR*(ANNIHILATION_THRESHOLD-2*mass);
-          //  mass+=dtEff*wx*(1+dtEff*wy*0.5);
-          //end else
-          //  mass+=REGROWTH_FACTOR*dtEff;
-
+          //Regrowing mass is added "with zero impulse"
           mass+=REGROWTH_FACTOR*dtEff;
 
           if mass>epsilon
@@ -174,17 +167,12 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
             if f>SPEED_CAP*SPEED_CAP then v*=0.99*SPEED_CAP/sqrt(f);
           end;
 
-          if (ANNIHILATION_FACTOR>0) and (mass>ANNIHILATION_THRESHOLD)
-          then begin
+          if (ANNIHILATION_FACTOR>0) and (mass>ANNIHILATION_THRESHOLD) then begin
             wx:=ANNIHILATION_FACTOR*dtEff;
             mass*=(1 + wx*((ANNIHILATION_THRESHOLD-mass) + wx*(sqr(mass) + ANNIHILATION_THRESHOLD*0.5*(ANNIHILATION_THRESHOLD - 3*mass))));
           end;
 
         end;
-
-
-        f:=(DIFFUSION_BASE+DIFFUSION_BY_VELOCITY*sqrt(sqr(v[0])+sqr(v[1])))*dtEff;
-        if f>2.5 then f:=2.5 else if f<0 then f:=0;
 
         //a = d²x/dt²
         //j = d³x/dt³ = (a(t_current)-a(t_prev))/(t_current-t_prev)
@@ -196,52 +184,26 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
 
         ax0:=staggeredAcceleration[(i+mask) and mask,j,0];
         jx0:=(ax0-acc[0])*jerkFactor;
-        vx0:=             v[0]+dtEff    *(ax0+jx0);
-        x0 :=i  -f+dtEff*(v[0]+dtEff*0.5*(ax0+jx0*0.66666666));
+        vx0:=         v[0]+dtEff    *(ax0+jx0);
+        x0 :=i+dtEff*(v[0]+dtEff*0.5*(ax0+jx0*0.66666666));
 
         ax1:=staggeredAcceleration[i,j,0];
         jx1:=(ax1-acc[0])*jerkFactor;
-        vx1:=v[0] +dtEff*(ax1 +jx1);
-        x1 :=i+1+f+dtEff*(v[0]+dtEff*0.5*(ax1+jx1*0.66666666));
+        vx1:=v[0]+dtEff*(ax1 +jx1);
+        x1 :=i+1 +dtEff*(v[0]+dtEff*0.5*(ax1+jx1*0.66666666));
 
         ay0:=staggeredAcceleration[i,(j+mask) and mask,1];
         jy0:=(ay0-acc[1])*jerkFactor;
-        vy0:=v[1] +dtEff*(ay0 +jy0);
-        y0 :=j-  f+dtEff*(v[1]+dtEff*0.5*(ay0+jy0*0.66666666));
+        vy0:=v[1]+dtEff*(ay0 +jy0);
+        y0 :=j   +dtEff*(v[1]+dtEff*0.5*(ay0+jy0*0.66666666));
 
         ay1:=staggeredAcceleration[i,j,1];
         jy1:=(ay1-acc[1])*jerkFactor;
-        vy1:=v[1] +dtEff*(ay1 +jy1);
-        y1 :=j+1+f+dtEff*(v[1]+dtEff*0.5*(ay1+jy1*0.66666666));
+        vy1:=v[1]+dtEff*(ay1 +jy1);
+        y1 :=j+1 +dtEff*(v[1]+dtEff*0.5*(ay1+jy1*0.66666666));
 
         if x1<x0+1 then begin x0:=(x0+x1)*0.5-0.5; x1:=x0+1; end;
         if y1<y0+1 then begin y0:=(y0+y1)*0.5-0.5; y1:=y0+1; end;
-        if SYMMETRIC_CONTINUATION<=0 then begin
-          if i=0 then begin
-            ax1:=abs(ax1); ax0:=ax1;
-            vx1:=abs(vx1); vx0:=vx1;
-            x0 :=x1-1;
-          end else if i=mask then begin
-            ax0:=-abs(ax0); ax1:=ax0;
-            vx0:=-abs(vx0); vx1:=vx0;
-            x1 :=x0+1;
-          end;
-          if j=0 then begin
-            ay1:=abs(ay1); ay0:=ay1;
-            vy1:=abs(vy1); vy0:=vy1;
-            y0:=y1-1;
-          end else if j=mask then begin
-            ay0:=-abs(ay0); ay1:=ay0;
-            vy0:=-abs(vy0); vy1:=vy0;
-            y1:=y0+1;
-          end;
-          if x0<0        then begin x0:=abs(x0)                  ; if x1<x0+1 then x1:=x0+1; vx0:= abs(vx0); vx1:= abs(vx1);  end else
-          if x1>SYS_SIZE then begin x1:=SYS_SIZE-abs(SYS_SIZE-x1); if x0>x1-1 then x0:=x1-1; vx1:=-abs(vx1); vx0:=-abs(vx0);  end else
-          if x1<x0+1     then begin x0:=(x0+x1)*0.5-0.5; x1:=x0+1; end;
-          if y0<0        then begin y0:=abs(y0)                  ; if y1<y0+1 then y1:=y0+1; vy0:= abs(vy0); vy1:= abs(vy1);  end else
-          if y1>SYS_SIZE then begin y1:=SYS_SIZE-abs(SYS_SIZE-y1); if y0>y1-1 then y0:=y1-1; vy1:=-abs(vy1); vx0:=-abs(vy0);  end else
-          if y1<y0+1     then begin y0:=(y0+y1)*0.5-0.5; y1:=y0+1; end;
-        end;
 
         value[i,j].mass*=1/((x1-x0)*(y1-y0));
         vx0*=value[i,j].mass; vx1*=value[i,j].mass; vx1:=(vx1-vx0)/(x1-x0);

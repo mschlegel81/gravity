@@ -11,32 +11,41 @@ softFail(...)->begin
   beep;
 end;
 
-execBuild(customizationFile:String,mode:StringList(2),missingOnly:Boolean)->begin
-  local targets:=split(customizationFile.extractFileDirectory,'_')[0]&['_high_density/','_low_density/','_ultra_density/']&mode[1];
-  missingOnly
-  ? targets:=targets.filter((f)->!fileExists(f) AND !(fileExists(f.changeFileExt('.mnh')) AND fileExists(f.changeFileExt('.dat'))))
-  : void;
-  targets.size==0 ? return void :
+exeIsMissing(name:String)->
+  fileExists(name)
+  ? false
+  : name.changeFileExt('.dump').fileExists
+    ? true
+    : name.changeFileExt('.replay').fileExists
+      ? false
+      : true;
 
-  print('Building ',customizationFile,' with mode ',mode[0]);
-  copyFile(customizationFile,'customization.pas').assert;
-  local buildOut:=exec(LAZ_BUILD,[LPI,mode[0]]);
-  buildOut[1]==0
-  ? future((src,tgt)->begin
-      tgt.each(t,
-        printf('%s -> %s',src,t),
-        copyFile(src,t) ? void : softFail('Copy failed for: ',src,' -> ',t));
-      deleteFile(src);
-    end,[mode[1],targets])
-  : softFail('Build failed for mode ',mode[0]," with:\n",buildOut[0].join("\n"));
-end;
 
 rebuild(missingOnly:Boolean,prefix)->
   allFiles('.','customization.pas')
   .filter((e)->e.extractFileDirectory not in ['.','.\backup','./backup'])
-  .filter((e)->e.matches(prefix))
-  .each(customizationFile,MODES.each(mode,execBuild(customizationFile,mode,missingOnly)),|)
-  .each(copyFuture,copyFuture());
+  .cross(MODES,['_high_density/','_low_density/','_ultra_density/'])
+  .map(::flatten)
+  .map((customizationFile,buildMode,targetExe,targetPathPart)->
+       [customizationFile,buildMode,targetExe,split(customizationFile.extractFileDirectory,'_')[0]&targetPathPart&targetExe])
+  .filter((customizationFile,buildMode,targetExe,targetPath)->targetPath.matches(prefix) AND (!missingOnly OR exeIsMissing(targetPath)))
+  .group(0)
+  .map((key,value)-> value.getInner(3).group(value.map((customizationFile,buildMode,targetExe,targetPath)->[customizationFile,buildMode,targetExe])))
+  .agg(|)
+  .map((key,value)->key|[value])
+  .sort
+  .map((customizationFile,buildMode,targetExe,copyTargets)->begin
+    print('Building ',customizationFile,' with mode ',buildMode);
+    copyFile(customizationFile,'customization.pas').assert;
+    local buildOut:=exec(LAZ_BUILD,[LPI,buildMode]);
+    buildOut[1]==0
+    ? copyTargets.map((target)->begin
+        printf('%s -> %s',targetExe,target);
+        copyFile(targetExe,target) ? void : softFail('Copy failed for: ',targetExe,' -> ',target);
+      end)
+    : softFail('Build failed for mode ',buildMode," with:\n",buildOut[0].join("\n"));
+   end)
+  .toList;
 
 //*(Re)build all
 main->rebuild(false,'.');
@@ -48,4 +57,7 @@ main(prefix)->rebuild(false,'^./'&prefix);
 main('missing',prefix)->rebuild(true,'^./'&prefix);
 
 @after
-after->print('Rebuild done');
+after->begin
+  MODES.getInner(1).filter(::fileExists).map(::deleteFile).toList;
+  print('Rebuild done');
+end;

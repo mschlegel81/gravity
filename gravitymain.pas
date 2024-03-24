@@ -82,9 +82,12 @@ FUNCTION calcThread(p:pointer):ptrint;
       end;
     end;
 
-  PROCEDURE transcode;
+  FUNCTION transcode:boolean;
     VAR uncompressedAnimStream:TFileStream;
         replaying: Boolean;
+        ref_replaying: Boolean;
+        ref_newPic: P_rgbPicture;
+        validateCounter:longint=0;
     begin
       uncompressedAnimStream:=TFileStream.Create(fileName_anim,fmOpenReadWrite or fmShareDenyWrite);
       uncompressedAnimStream.Seek(0,soBeginning);
@@ -97,10 +100,49 @@ FUNCTION calcThread(p:pointer):ptrint;
            .appendLineBreak;
         if replaying then addPicture(true);
       until not(replaying);
+
+      uncompressedAnimStream.Seek(0,soBeginning);
+      compressedAnimStream.Seek(0,soBeginning);
+
+      prevPic:=nil;
+      result:=true;
+      repeat
+        new(ref_newPic,create);
+        ref_replaying:=ref_newPic^.load(uncompressedAnimStream,prevPic);
+        new(newPic,create);
+        replaying:=newPic^.loadCompressed(compressedAnimStream,prevPic);
+        if ref_replaying and replaying then begin
+          if not(newPic^.equals(ref_newPic)) then begin
+            log.append('Validate (').append(validateCounter).append(') FAILURE!!!').appendLineBreak;
+            Beep;
+            replaying:=false;
+            result:=false;
+          end else begin
+            log.append('Validate (').append(validateCounter).append(') o.k.').appendLineBreak;
+          end;
+        end else if ref_replaying xor replaying then begin
+          log.append('Validate (').append(validateCounter).append(') ');
+          if ref_replaying
+          then log.append('ADDITIONAL FRAME')
+          else log.append('MISSING FRAME');
+          log.appendLineBreak;
+          Beep;
+          replaying:=false;
+          result:=false;
+        end;
+        dispose(ref_newPic,destroy);
+        if replaying then begin
+          if prevPic<>nil then dispose(prevPic,destroy);
+          prevPic:=newPic;
+        end;
+        inc(validateCounter);
+      until not(replaying);
+      FreeAndNil(uncompressedAnimStream);
     end;
 
   VAR anyCalculated:boolean=false;
       compressedReplayExists:boolean;
+      validationOk:boolean=true;
   begin
     randomize;
     queue:=P_animation(p);
@@ -114,35 +156,40 @@ FUNCTION calcThread(p:pointer):ptrint;
 
     if not(hasRestartFlag) then begin
       if fileExists(fileName_anim) and not compressedReplayExists
-      then transcode
-      else replay;
+      then begin
+        validationOk:=transcode;
+        if validationOk then closing:=true;
+      end else replay;
     end;
-    if calcFrameCount<5000 then begin
-      //Only try to read dump if there is still something left to calculate
-      if not(hasReplayFlag) and (not(sys.loadFromFile(fileName_dump)) or (sys.numberOfFrames<>calcFrameCount)) then begin
-        log.append('ERROR ON RESTORE! RESTARTING CALCULATION.').appendLineBreak;
-        calcFrameCount:=0;
-        compressedAnimStream.Seek(0,soBeginning);
-        sys.destroy;
-        sys.create;
-        while queue^.dropFrame>0 do;
-        prevPic:=nil;
-        newPic:=sys.getPicture;
-        addPicture(true);
+    if validationOk and not(closing) then begin
+      if calcFrameCount<5000 then begin
+        //Only try to read dump if there is still something left to calculate
+        if not(hasReplayFlag) and (not(compressedReplayExists) or not(sys.loadFromFile(fileName_dump)) or (sys.numberOfFrames<>calcFrameCount)) then begin
+          log.append('ERROR ON RESTORE! RESTARTING CALCULATION.').appendLineBreak;
+          calcFrameCount:=0;
+          compressedAnimStream.Seek(0,soBeginning);
+          sys.destroy;
+          sys.create;
+          while queue^.dropFrame>0 do;
+          prevPic:=nil;
+          newPic:=sys.getPicture;
+          addPicture(true);
+        end;
+        while not(closing) and (calcFrameCount<5000) and not(hasReplayFlag) do begin
+          sys.doMacroTimeStep(calcFrameCount);
+          anyCalculated:=true;
+          newPic:=sys.getPicture;
+          addPicture(true);
+        end;
       end;
-      while not(closing) and (calcFrameCount<5000) and not(hasReplayFlag) do begin
-        sys.doMacroTimeStep(calcFrameCount);
-        anyCalculated:=true;
-        newPic:=sys.getPicture;
-        addPicture(true);
-      end;
+      queue^.addFrame(newPic);
     end;
-    if anyCalculated then begin
+    if (calcFrameCount>=5000)
+    then DeleteFile(fileName_dump)
+    else if anyCalculated then begin
       sys.numberOfFrames:=calcFrameCount;
       sys.saveToFile(fileName_dump);
-    end else if calcFrameCount>=5000 then DeleteFile(fileName_dump);
-
-    queue^.addFrame(newPic);
+    end;
     compressedAnimStream.destroy;
     sys.destroy;
     result:=0;

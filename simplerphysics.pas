@@ -34,8 +34,8 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
       dy:=sqr(x)+sqr(y+0.5);
       result[0]:=-straightAttraction(x+0.5,y)[0];
       result[1]:=-straightAttraction(x,y+0.5)[1];
-      if (dx>SYS_SIZE*SYS_SIZE) and (SYMMETRIC_CONTINUATION>0) then result[0]*=exp(-0.5*(dx*(1/SYS_SIZE*SYS_SIZE)-1));
-      if (dy>SYS_SIZE*SYS_SIZE) and (SYMMETRIC_CONTINUATION>0) then result[1]*=exp(-0.5*(dy*(1/SYS_SIZE*SYS_SIZE)-1));
+      if (dx>SYS_SIZE*SYS_SIZE) then result[0]*=exp(-0.5*(dx*(1/SYS_SIZE*SYS_SIZE)-1));
+      if (dy>SYS_SIZE*SYS_SIZE) then result[1]*=exp(-0.5*(dy*(1/SYS_SIZE*SYS_SIZE)-1));
     end;
 
   VAR ix,iy:longint;
@@ -63,8 +63,8 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
 
       for ix:=0 to SYS_SIZE-1 do for iy:=0 to SYS_SIZE-1 do begin
         temp:=zeroVec;
-        for symX:=-SYMMETRIC_CONTINUATION to SYMMETRIC_CONTINUATION do
-        for symY:=-SYMMETRIC_CONTINUATION to SYMMETRIC_CONTINUATION do
+        for symX:=-SYMMETRIC_CONTINUATION-1 to SYMMETRIC_CONTINUATION do
+        for symY:=-SYMMETRIC_CONTINUATION-1 to SYMMETRIC_CONTINUATION do
           temp+=calculateAttraction(ix+symX*SYS_SIZE,iy+symY*SYS_SIZE);
         attractionField[ix,iy]:=temp;
       end;
@@ -80,6 +80,7 @@ CONSTRUCTOR T_cellSystem.create;
   begin
     value:=getInitialState;
     prevAccelTime:=-1E50;
+    attractionInitialized:=false;
   end;
 
 DESTRUCTOR T_cellSystem.destroy;

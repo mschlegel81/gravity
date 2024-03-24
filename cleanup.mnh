@@ -5,6 +5,13 @@ census->begin
   [info.size,info.getInner('size').agg(+)];
 end;
 
+exeMayBeDeleted(name:String)->
+  name.changeFileExt('.dump').fileExists
+  ? false
+  : name.changeFileExt('.replay').fileExists
+    ? true
+    : false;
+
 getListingToDelete(includeExe:Boolean)->begin
   changeDirectory(myPath.extractFileExt);
   local blocked:=runningGravTasks.map((n)->n.changeFileExt('')).relativeFileName.toSet;
@@ -14,7 +21,7 @@ getListingToDelete(includeExe:Boolean)->begin
         files(['*.replay','*.anim','*.log','*.exe','*.dump']),
         allFiles('.','grav*.log'),
         allFiles('.','grav*.anim').intersect(allFiles('.','grav*.replay').changeFileExt('.anim')),
-        includeExe ? allFiles('.','grav*.exe').minus(allFiles('.','grav*.dump').changeFileExt('.exe')) : void)  .filter(unblockedFilter);
+        includeExe ? allFiles('.','grav*.exe').filter(::exeMayBeDeleted) : void)  .filter(unblockedFilter);
 end.sort;
 
 cleanup(includeExe:Boolean)->begin
@@ -34,4 +41,3 @@ main('deep')->cleanup(true);
 main(       'preview')->printf('%s',getListingToDelete(false));
 //*List files that would be deleted in deep run
 main('deep','preview')->printf('%s',getListingToDelete(true));
-

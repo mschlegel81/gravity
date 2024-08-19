@@ -1,7 +1,7 @@
 USE startall;
 
 census->begin
-  local info:=allFiles('.').fileInfo;
+  info:=allFiles('.').fileInfo;
   [info.size,info.getInner('size').agg(+)];
 end;
 
@@ -14,8 +14,8 @@ exeMayBeDeleted(name:String)->
 
 getListingToDelete(includeExe:Boolean)->begin
   changeDirectory(myPath.extractFileExt);
-  local blocked:=runningGravTasks.map((n)->n.changeFileExt('')).relativeFileName.toSet;
-  local unblockedFilter:=(f)->f.changeFileExt('').expandedFileName.relativeFileName not in blocked;
+  blocked:=runningGravTasks.map((n)->n.changeFileExt('')).relativeFileName.toSet;
+  unblockedFilter:=(f)->f.changeFileExt('').expandedFileName.relativeFileName not in blocked;
   union(allFiles('backup','*.*'),
         allFiles('lib','*.*'),
         files(['*.replay','*.anim','*.log','*.exe','*.dump']),
@@ -25,13 +25,13 @@ getListingToDelete(includeExe:Boolean)->begin
 end.sort;
 
 cleanup(includeExe:Boolean)->begin
-  local oldCensus:=census;
+  oldCensus:=census;
   getListingToDelete(includeExe).agg((f)->log('Deleting ',f,deleteFile(f) ? ' o.k.' : ' FAILED'));
-  local freed:=oldCensus-census;
+  freed:=oldCensus-census;
   log( floor(freed[1]      ),"\tbytes in ",freed[0],' files freed',
-  "\n",floor(freed[1]/1024 ),"\tkB",
-  "\n",floor(freed[1]/1024²),"\tMB",
-  "\n",floor(freed[1]/1024³),"\tGB");
+  "\n",floor(freed[1]/1024 ),"\tkiB",
+  "\n",floor(freed[1]/1024²),"\tMiB",
+  "\n",floor(freed[1]/1024³),"\tGiB");
 end;
 
 main->cleanup(false);

@@ -1,0 +1,13 @@
+BLOCKS:=[0..100].map((l)->[" ","▁","▂","▃","▄","▅","▆","▇","█"][floor(l*9/101)])|'!';
+QUIT:='quit';
+
+datastore occupiedIndexes:=[].toMap;
+
+
+@MaxAge=10
+memoized gravExes->allFiles('.','grav*.exe').map(::expandedFileName).map(::systemSpecificFilename);
+
+@MaxAge=1
+memoized forcedRunningGravTasks->getTaskInfo.map((i)->gravExes[!pos(gravExes,i['commandLine']).isInfinite][0]).toSet;
+
+

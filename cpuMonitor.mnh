@@ -7,12 +7,12 @@ private ensure_server->
   ? void
   : begin
       execAsync(executor,['-quiet','-headless',myPath]);
-      while(!isIpcServerRunning(MY_IPC_ID),sleep(1));
+      while not isIpcServerRunning(MY_IPC_ID) do sleep(1);
     end;
 
 getCpuLoadHistory->begin
-  local lastResult:=[100];
-  local lastQueried:=-100;
+  lastResult:=[100];
+  lastQueried:=-100;
 save;
   scriptTime<lastQueried+1
   ? lastResult
@@ -29,8 +29,8 @@ getCpuLoadHistory(maxSize:Int)->getCpuLoadHistory.trailing(maxSize);
 waitForFreeCapacity->begin
   ensure_server;
   future({begin
-    local myId:=[systime,scriptTime,intRandom(2^256)].toString.sha256;
-    while(!(true==sendIpcRequest(MY_IPC_ID,['CAN_START',myId])), sleep(1+2*random));
+    myId:=[systime,scriptTime,intRandom(2^256)].toString.sha256;
+    while !(true==sendIpcRequest(MY_IPC_ID,['CAN_START',myId])) do sleep(1+2*random);
     true;
   end});
 end;
@@ -41,9 +41,9 @@ mutable hasKillRequest:=false;
 THRESHOLD_CAPACITY:=75;
 
 handleRequest(request)->begin
-  local queued:=[];
-  local staleAt:=[].toMap;
-  local dontStartBefore:=10;
+  queued:=[];
+  staleAt:=[].toMap;
+  dontStartBefore:=10;
 save;
   request=='KILL'
   ? begin
@@ -53,16 +53,16 @@ save;
   ? begin
       lastQueried:=scriptTime;
       //Enqueue if not present yet
-      local id:=request[1];
+      id:=request[1];
       id in queued ? void : log('New ID') orElse queued|=id;
       staleAt[id]:=scriptTime+10;
 
-      while(queued.size>1 AND scriptTime>staleAt[queued.head],begin
-        local drop:=queued.head;
+      while queued.size>1 AND scriptTime>staleAt[queued.head] do begin
+        drop:=queued.head;
         log(drop,' has gone stale');
         staleAt>>drop;
         queued:=queued.tail;
-      end);
+      end;
 
       log('id   : ',id,
         "\nqueue: ",queued.join("\n       "),'  (',queued.size,')',
@@ -90,14 +90,14 @@ main->begin
   freeConsole;
   startIpcServer(MY_IPC_ID,::handleRequest);
   hideConsole;
-  local q:=round(scriptTime);
-  while((scriptTime<lastQueried+60) AND !hasKillRequest,begin
+  q:=round(scriptTime);
+  while (scriptTime<lastQueried+60) AND !hasKillRequest do begin
     sleepUntil(q+=1);
-    local l:=getCPULoadPercentage;
+    l:=getCPULoadPercentage;
     cpuLoad:=trailing(cpuLoad|l,256);
     cpuLoadQueryCount+=1;
     q mod 30=0 ? callMemoryCleaner : void;
-  end);
+  end;
 end;
 
 main('kill')->isIpcServerRunning(MY_IPC_ID) ? sendIpcRequest(MY_IPC_ID,'KILL') : void;

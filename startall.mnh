@@ -1,22 +1,13 @@
-USE cpuMonitor;
+USE cpuMonitor, util, rebuild;
 
-mutable isStarter:=false;
 MAX_GRAV_INSTANCES:=12;
-datastore occupiedIndexes:=[].toMap;
-
-
-@MaxAge=60
-memoized gravExes->allFiles('.','grav*.exe').map(::expandedFileName).map(::systemSpecificFilename);
-
-@MaxAge=1
-memoized forcedRunningGravTasks->getTaskInfo.map((i)->gravExes[!pos(gravExes,i['commandLine']).isInfinite][0]).toSet;
 
 runningGravTasks->begin
-  local running:=occupiedIndexes.getInner(0).intersect(forcedRunningGravTasks);
-  local timeout:=scriptTime+5;
+  running:=occupiedIndexes.getInner(0).intersect(forcedRunningGravTasks);
+  timeout:=scriptTime+5;
   occupiedIndexes.getInner(0).minus(running).each(key,occupiedIndexes[key]:=void);
 save;
-  (occupiedIndexes.size>=MAX_GRAV_INSTANCES OR !isStarter) AND scriptTime>timeout
+  occupiedIndexes.size>=MAX_GRAV_INSTANCES AND scriptTime>timeout
   ? begin
       running:=forcedRunningGravTasks;
       timeout:=scriptTime+5;
@@ -26,265 +17,126 @@ save;
 end;
 
 positionParameter(execName:String)->begin
-  local nextPP:=0;
+  nextPP:=0;
 save;
-  while(nextPP in occupiedIndexes.getInner(1),nextPP+=1);
+  while nextPP in occupiedIndexes.getInner(1) do nextPP+=1;
   nextPP>=MAX_GRAV_INSTANCES
   ? begin
       nextPP:=0;
       occupiedIndexes.getInner(0).minus(runningGravTasks).each(key,occupiedIndexes[key]:=void);
-      while(nextPP in occupiedIndexes.getInner(1),nextPP+=1);
+      while nextPP in occupiedIndexes.getInner(1) do nextPP+=1;
     end
   : void;
-  occupiedIndexes[execName]:=nextPP;
-  writeDataStores;
-  local P:=nextPP>=MAX_GRAV_INSTANCES ? void : 'pos='&nextPP;
+  occupiedIndexes[execName.systemSpecificFilename]:=nextPP;
+  writeAllDataStores;
+  P:=nextPP>=MAX_GRAV_INSTANCES ? void : 'pos='&nextPP;
   nextPP+=1;
   P;
 end;
 
 execute(execName:String,replay:Boolean)->
-  execAsync(execName,[execName.matches('low_density') ? 'ld' :
-                      execName.matches('high_density') ? 'hd' : void,
-                      replay ? 'replay' : void,
-                                          positionParameter(execName)].{$L==[] ? void : $L});
+  execAsync(execName.systemSpecificFilename,[execName.matches('low_density') ? 'ld' :
+                                             execName.matches('high_density') ? 'hd' : void,
+                                             replay ? 'replay' : void,
+                                                                 positionParameter(execName)].{$L==[] ? void : $L});
 
-mnhFiles->allFiles('.','*.mnh').filter((f)->f.extractFileDirectory<>'.' AND f.matches('grav\d+\.mnh'));
 
 mutable toClear:=0;
 tPrint(...)->begin
-  local out:=join(...);
-  out&=repeat(' ',toClear-out.length);
+  out:=join(...);
+  out&=repeatString(' ',toClear-out.length);
   print("\r\e[90m",formatTime("hh:mm.ss",systime),"\e[0m ",out);
   toClear:=0;
 end;
 
 tPrintD(...)->begin
-  local lastPrinted:=void;
+  lastPrinted:=void;
 save;
   lastPrinted==... ? void : begin
-    local out:=join(...);
-    out&=repeat(' ',toClear-(toClear:=out.length));
+    out:=join(...);
+    out&=repeatString(' ',toClear-(toClear:=out.length));
     printDirect("\r\e[90m",formatTime("hh:mm.ss",systime),"\e[0m ",out);
     lastPrinted:=...;
   end;
 end;
 
-BLOCKS:=[0..100].map((l)->[" ","▁","▂","▃","▄","▅","▆","▇","█"][floor(l*9/101)])|'!';
-
 SKIP:='skip';
 FORCE:='force';
-QUIT:='quit';
 
 exeSorting(L:StringCollection)->L.map((n)->n.extractFileNameOnly.clean(['0'..'9'],'').softCast=>n).sort(1).sort(0).getInner(1);
 
-start(replay:Boolean)->begin
-  isStarter:=true;
+//*List executables
+main('list')->begin
+  allNames      :=gravExes                                                       .expandedFileName.relativeFileName.toSet;
+  missingNames  :=buildableExe.getInner(3).filter(::exeIsMissing).minus(allNames).expandedFileName.relativeFileName.toSet;
+
+  union(allNames,missingNames)
+  .map((name)->[name.extractFileDirectory,format(name in missingNames ? "\e[90m%s\e[0m" : "\e[00m%s\e[0m",name.extractFileName)])
+  .{$L.getInner(1).group($L.getInner(0))}
+  .sort
+  .map((dir,exes)->f"{dir}\t:\t{exes.sort.join(#9)}")
+  .join("\n")
+  .print;
+end;
+
+main('-h')->print(helpOnMain);
+
+//*Start with optional flags: replay, build, <match pattern>
+main(...)->begin
   assertUniqueInstance;
-  local consoleWidth:=exec('cmd',['/C','mode','con'])[0].filter((line)->line.matches(': *\d+$')).head(2).trailing.split(':')[1].trim.softCast-1;
-  local firstQuestion:=true;
-  local userSignal:='';
-  localAsync({while(true,begin
+  hasReplayFlag:=false;
+  hasBuildFlag:=false;
+  matchPattern:='.*';
+
+  (...).each(arg,
+    arg=='replay' ? hasReplayFlag:=true :
+    arg=='build' ? hasBuildFlag:=true :
+    matchPattern:=arg);
+
+  consoleWidth:=exec('cmd',['/C','mode','con'])[0].filter((line)->line.matches(': *\d+$')).head(2).trailing.split(':')[1].trim.softCast-1;
+  firstQuestion:=true;
+  userSignal:='';
+  localAsync({while true do begin
     userSignal:=ask('Next element in queue...',[SKIP,FORCE,QUIT],firstQuestion);
     firstQuestion:=false;
-  end)});
+  end});
 
-  local startedCount:=0;
+  startedCount:=0;
 
-  gravExes.exeSorting.each(execName,execName in runningGravTasks ? tPrint('          ',execName.relativeFileName,' is already running') :
+  (hasBuildFlag
+   ? buildableExe.getInner(3)
+   : gravExes)
+  .filter((exe)->exe.matches(matchPattern))
+  .filter((exe)->hasBuildFlag AND exeIsMissing(exe) OR fileExists(exe))
+  .exeSorting
+  .each(execName,userSignal==QUIT ? void : execName.systemSpecificFilename in runningGravTasks ? tPrint('          ',execName.relativeFileName,' is already running') :
   begin
-    local isExe:=execName.extractFileExt='.exe';
-    local name:=isExe
-                ? execName.relativeFileName
-                : f'{execName}->C';
-
+    name:=execName.relativeFileName;
     userSignal:=userSignal==QUIT ? QUIT : '';
-    local wait:=waitForFreeCapacity;
-    local load:=getCpuLoadHistory(consoleWidth-length(name)-29);
-    while((!peekFuture(wait) OR
-           (runningGravTasks.size>=MAX_GRAV_INSTANCES) AND isExe) AND (userSignal=='') ,begin
+    wait:=waitForFreeCapacity;
+    load:=getCpuLoadHistory(consoleWidth-length(name)-29);
+    while (!peekFuture(wait) OR
+           runningGravTasks.size>=MAX_GRAV_INSTANCES) AND (userSignal=='') do begin
       tPrintD('Next:     ',name,"; CPU: ",BLOCKS[load].join,format('%3d',load.trailing),'%');
       load:=getCpuLoadHistory(consoleWidth-length(name)-29);
       sleep(0.1);
-    end);
+    end;
     userSignal in [SKIP,QUIT]
     ? tPrint('Skipping: ',name)
     : begin
         userSignal==FORCE
         ? tPrint('Forced:   ',name)
         : tPrint('Starting: ',name);
-        execute(execName,replay);
+        hasBuildFlag ? ensureExe(expandedFileName(execName)) : void;
+        execute(execName,hasReplayFlag);
         startedCount+=1;
       end;
   end);
-  isStarter:=false;
   tPrint(startedCount,' tasks started');
-  local running:=forcedRunningGravTasks;
+  running:=forcedRunningGravTasks;
   tPrint(running.size,' tasks are running: ',join("\n  "&sort(running)));
   tPrint('done');
-end;
-
-//*Start in calculation mode
-main->start(false);
-
-//*Start in replay mode
-main('r')->start(true);
-
-//*Decompress all compressed files
-main('d')->mnhFiles.map((script)->
-  future((script_)->begin
-    print('Starting ',script_);
-    assert(exec(executor,[script])[1]==0,'Script ',script_,' failed');
-    print(script,' executed successfully');
-  end,[script]))
-  .each(f,f());
 
 
-//*Decompress compressed files matching pattern
-main('d',pattern)->mnhFiles.filter((script)->script.matches(pattern)).map((script)->
-  future((script_)->begin
-    print('Starting ',script_);
-    assert(exec(executor,[script])[1]==0,'Script ',script_,' failed');
-    print(script,' executed successfully');
-  end,[script]))
-  .each(f,f());
 
-//*List executables (exe) and compressed executables (mnh)
-main('list')->begin
-  local f:=(gravExes | mnhFiles).expandedFileName.relativeFileName;
-  f:=[f.extractFileDirectory,f.extractFileName].transpose;
-  local allNames      :=f.getInner(1).unique;
-
-  f.getInner(0).unique.each(dir,join([dir,': ']|allNames.map((n)->[dir,n] in f ? n : ''),"\t"))
-   .join("\n").print;
-end;
-
-watcher(filename:String)->{begin
-  local timedOut:=true;
-  local trailSize:=100;
-  local trail:=[];
-  local reinitialize:=()->begin
-    timedOut:=false;
-    trail:=[];
-    localAsync({begin
-      local it:=fileLineIterator(filename,60);
-      local n:=void;
-      while(!isVoid(n:=it()),begin
-        trail:=
-        (n.matches('Calculation thread stopped')
-        ? trail.trailing|("\t"&n)
-        : trailing(trail|("\t"&n),trailSize));
-      end);
-      trail|=("\t"&'...timed out');
-      timedOut:=true;
-    end});
-  end;
-save;
-  timedOut ? reinitialize() : void;
-  trailSize:=max(1,$trailSize);
-  trail.size>trailSize
-  ? trail.trailing(trailSize)
-  : trail;
-end};
-
-
-//*Watch all log files
-main('w')->begin
-  local killSignal:=false;
-  local linesTotal:=exec('cmd',['/C','mode','con'])[0].filter((line)->line.matches(': *\d+$')).head.split(':')[1].trim.softCast-1;
-  local cpuWidth  :=32;
-
-  localAsync({begin local answer:=''; while(answer!=QUIT,begin
-    answer:=ask('?',[QUIT,'+','-'],false);
-    answer=='+' ? printDirect("\rLines: ",linesTotal+=1,'  ') :
-    answer=='-' ? printDirect("\rLines: ",linesTotal:=max(1,linesTotal-1),'  ') :
-    answer==QUIT ? killSignal:=true : void;
-  end); end});
-  local logs:=forcedRunningGravTasks
-    .sort((exeName)->occupiedIndexes[exeName] orElse Inf)
-    .filter((e)->e.changeFileExt('.log').fileExists)
-    .map((e)->begin
-       local key:=e.relativeFileName.changeFileExt('');
-       [key,watcher(e.changeFileExt('.log')),['-']];
-     end);
-
-  sleep(1);
-
-  local nextScanForNewTasks:=scriptTime+10;
-  local sleepTime:=0;
-  while(!killSignal,begin
-    local anyChanged:=false;
-    scriptTime>=nextScanForNewTasks
-    ? begin
-        local currentRunning:=forcedRunningGravTasks.sort((exeName)->occupiedIndexes[exeName] orElse Inf).filter((e)->e.changeFileExt('.log').fileExists);
-        currentRunning.map((e)->e.relativeFileName.changeFileExt('')).sort == logs.getInner(0).sort
-        ? void
-        : begin
-            local previousEntries:=logs.map((l)->l[0]=>l).toMap;
-            logs:=currentRunning
-                  .map((e)->begin
-                     local key:=e.relativeFileName.changeFileExt('');
-                     previousEntries[key] orElse [key,watcher(e.changeFileExt('.log')),['']];
-                   end);
-            anyChanged:=true;
-          end;
-        nextScanForNewTasks:=scriptTime+10;
-      end
-    : void;
-
-    logs:=logs.each(e,
-      begin
-        (local n:=e[1](linesTotal))==e[2]
-        ? e
-        : begin
-            anyChanged:=true;
-            [e[0],e[1],n];
-          end;
-      end);
-
-    anyChanged
-    ? begin
-        local out:=logs.map((l)->[l[0],l[2]==[] ? [''] : l[2]]);
-        out.size==0 ? void : begin
-          local includeEta:=linesTotal>=3*out.size;
-
-
-          local lines:=out.getInner(1).map((L)->max(1+ord(includeEta),L.size)).agg(+);
-
-          local eta:=
-          includeEta
-          ? out.getInner(1).each(L,begin
-              local remainingDays:=1/(24*60*60)*
-              (4999-L.matchComposite('Step \d+ done'  ).getInner(0).trailing[0].orElse('0').clean(['0'..'9'    ],'').softCast)
-                  *(L.matchComposite('done: \d+.\d+s;').getInner(0).getInner(0)            .clean(['0'..'9','.'],'').softCast.{$L.agg(+)/$L.size});
-
-              remainingDays<1
-              ? format("eta %s",formatTime('hh:mm:ss',remainingDays))
-              : format("eta %s + %sdays",formatTime('hh:mm:ss',remainingDays-floor(remainingDays)),floor(remainingDays));
-            end)
-         : void;
-
-          while(lines>max(linesTotal,out.size),begin
-            local k:=argMax(out.getInner(1).map(::size));
-            out[k]:=begin
-                      lines-=1;
-                      [out[k,0],out[k,1].tail];
-                    end;
-          end);
-
-          cpuWidth:=1+out.getInner(0)        .map(::length).max
-                     +out.getInner(1).flatten.map(::length).max
-                   -9;
-          includeEta
-          ? out:=out.each(o,o[0]&o[1].head,eta[index]&(o[1,1]),o[1].tail(2),|)
-          : out:=out.each(o,o[0]&o[1].head,o[1].tail,|);
-        end;
-        while(out.size<linesTotal,out|="\t...");
-        printf('%s',"\f"|out);
-      end
-    : void;
-    printDirect("\rCPU ",BLOCKS[getCpuLoadHistory(cpuWidth)].join,getCpuLoadHistory.orElse(['?']).trailing,'% ');
-
-    sleep(anyChanged ? sleepTime:=0.5 : sleepTime:=2-(2-sleepTime)*0.9);
-  end);
 end;

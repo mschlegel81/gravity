@@ -1,0 +1,134 @@
+USE cpuMonitor, util;
+
+watcher(filename:String)->{begin
+  timedOut:=true;
+  trailSize:=100;
+  trail:=[];
+  reinitialize:=()->begin
+    timedOut:=false;
+    trail:=[];
+    localAsync({begin
+      it:=fileLineIterator(filename,60);
+      n:=void;
+      while !isVoid(n:=it()) do begin
+        trail:=
+        (n.matches('Calculation thread stopped')
+        ? trail.trailing|("\t"&n)
+        : trailing(trail|("\t"&n),trailSize));
+      end;
+      trail|=("\t"&'...timed out');
+      timedOut:=true;
+    end});
+  end;
+save;
+  timedOut ? reinitialize() : void;
+  trailSize:=max(1,$trailSize);
+  trail.size>trailSize
+  ? trail.trailing(trailSize)
+  : trail;
+end};
+
+//*Watch all log files
+main->begin
+  killSignal:=false;
+  console_size:=exec('cmd',['/C','mode','con'])[0].filter((line)->line.matches(': *\d+$')).head(2).split(':').getInner(1).trim.softCast;
+  linesTotal:=console_size[0]-1;
+  cpuWidth  :=console_size[1]-10;
+
+  localAsync({begin answer:=''; while answer!=QUIT do begin
+    answer:=ask('?',[QUIT,'+','-'],false);
+    answer=='+' ? printDirect("\rLines: ",linesTotal+=1,'  ') :
+    answer=='-' ? printDirect("\rLines: ",linesTotal:=max(1,linesTotal-1),'  ') :
+    answer==QUIT ? killSignal:=true : void;
+  end; end});
+  logs:=forcedRunningGravTasks
+    .sort((exeName)->occupiedIndexes[exeName] orElse Inf)
+    .filter((e)->e.changeFileExt('.log').fileExists)
+    .map((e)->begin
+       key:=e.relativeFileName.changeFileExt('');
+       [key,watcher(e.changeFileExt('.log')),['-']];
+     end);
+
+  sleep(1);
+
+  nextScanForNewTasks:=scriptTime+10;
+  sleepTime:=0;
+  while !killSignal do begin
+    anyChanged:=false;
+    scriptTime>=nextScanForNewTasks
+    ? begin
+        currentRunning:=forcedRunningGravTasks.sort((exeName)->occupiedIndexes[exeName] orElse Inf).filter((e)->e.changeFileExt('.log').fileExists);
+        currentRunning.map((e)->e.relativeFileName.changeFileExt('')).sort == logs.getInner(0).sort
+        ? void
+        : begin
+            previousEntries:=logs.map((l)->l[0]=>l).toMap;
+            logs:=currentRunning
+                  .map((e)->begin
+                     key:=e.relativeFileName.changeFileExt('');
+                     previousEntries[key] orElse [key,watcher(e.changeFileExt('.log')),['']];
+                   end);
+            anyChanged:=true;
+          end;
+        nextScanForNewTasks:=scriptTime+10;
+      end
+    : void;
+
+    logs:=logs.each(e,
+      begin
+        (n:=e[1](linesTotal))==e[2]
+        ? e
+        : begin
+            anyChanged:=true;
+            [e[0],e[1],n];
+          end;
+      end);
+
+    anyChanged
+    ? begin
+        out:=logs.map((l)->[l[0],l[2]==[] ? [''] : l[2]]);
+        out.size==0 ? void : begin
+          includeEta:=linesTotal>=3*out.size;
+
+
+          lines:=out.getInner(1).map((L)->max(1+ord(includeEta),L.size)).agg(+);
+
+          eta:=
+          includeEta
+          ? out.getInner(1).each(L,begin
+              remainingDays:=1/(24*60*60)*
+              (4999-L.matchComposite('Step \d+ done'  ).getInner(0).trailing[0].orElse('0').clean(['0'..'9'    ],'').softCast)
+                  *(L.matchComposite('done: \d+.\d+s;').getInner(0).getInner(0)            .clean(['0'..'9','.'],'').softCast.{$L.agg(+)/$L.size});
+
+              remainingDays<1
+              ? format("eta %s",formatTime('hh:mm:ss',remainingDays))
+              : format("eta %s + %sdays",formatTime('hh:mm:ss',remainingDays-floor(remainingDays)),floor(remainingDays));
+            end)
+         : void;
+
+          while lines>max(linesTotal,out.size) do begin
+            k:=argMax(out.getInner(1).map(::size));
+            out[k]:=begin
+                      lines-=1;
+                      [out[k,0],out[k,1].tail];
+                    end;
+          end;
+
+          //cpuWidth:=1+out.getInner(0)        .map(::length).max
+          //           +out.getInner(1).flatten.map(::length).max
+          //         -9;
+          includeEta
+          ? out:=out.each(o,o[0]&o[1].head,eta[index]&(o[1,1]),o[1].tail(2),|)
+          : out:=out.each(o,o[0]&o[1].head,o[1].tail,|);
+        end;
+        while out.size<linesTotal do out|="\t...";
+        printf('%s',"\f"|out);
+      end
+    : void;
+    printDirect("\rCPU ",BLOCKS[getCpuLoadHistory(cpuWidth)].join,getCpuLoadHistory.orElse(['?']).trailing,'% ');
+
+    sleep(anyChanged ? sleepTime:=0.5 : sleepTime:=2-(2-sleepTime)*0.9);
+  end;
+end;
+
+
+

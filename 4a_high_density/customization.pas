@@ -2,11 +2,11 @@ UNIT customization;
 INTERFACE
 USES vectors,commandLineHandling;
 CONST
-  SYMMETRIC_CONTINUATION=2;
+  SYMMETRIC_CONTINUATION=3;
   dt                    =0.05;
   GRID_SIZE             =1;
 
-  REPULSION_LINEAR   =1.1*0.5/128;
+  REPULSION_LINEAR   =1;
 
   DIFFUSION_BY_VELOCITY =0;
   DIFFUSION_BASE        =0;
@@ -20,20 +20,22 @@ FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel:T_vectorField);
 IMPLEMENTATION
-
+VAR max_range:double;
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
   begin
-    result:=false;
+    max_range:=(0.7*timeStepIndex/1000)*SYS_SIZE;
+    result:=(timeStepIndex and 7)=0;
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR d:double;
   begin      
-    d:=rx*rx+ry*ry;
-    if d>32*32 then d:=0 else d:=1/128;
+    d:=sqrt(rx*rx+ry*ry);
+    if d>max_range then exit(zeroVec) else d:=0.002*(0.5+0.5*cos(pi*d/max_range));
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;
+
 
 FUNCTION getInitialState: T_systemState;
   VAR i,j:longint;      

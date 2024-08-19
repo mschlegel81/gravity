@@ -20,32 +20,38 @@ FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel:T_vectorField);
 IMPLEMENTATION
-VAR freq:double;
+USES math;
+VAR freq0  ,freq1  :double;
+    weight0,weight1:double;
 
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
-  CONST transitIndex  :array[0..7] of longint=(    -201,
-                                                714-100,
-                                               1429-100,
-                                               2143-100,
-                                               2857-100,
-                                               3571-100,
-                                               4286-100,5000);
-        relativePeriod:array[0..6] of double=(0.0719482421875,0.0824462890625,0.111053466796875,0.14287567138671875,0.19228210449218749,0.277447509765625,0.5076828002929687);
+  CONST transitIndex  :array[0..10] of longint=(   -201-50, 500-50,
+                                                   1000-50,1500-50,
+                                                   2000-50,2500-50,
+                                                   3000-50,3500-50,
+                                                   4000-50,4500-50,                                               
+                                                   5000);
+        relativeFreq:array[-1..9] of double=(64,32,32,16,16,8,8,4,4,2,2);
   VAR k:longint;
-      p,r:double;
+      p:double;
   begin
-    result:=false;
-    k:=0;
-    while timeStepIndex>transitIndex[k+1] do inc(k);
-    if timeStepIndex-transitIndex[k]<=200 then begin
+    k:=0;    
+    while timeStepIndex>=transitIndex[k+1] do inc(k);
+    if timeStepIndex-transitIndex[k]<=100 then begin
       result:=true;
-      p:=0.5+0.5*cos(pi/200*(timeStepIndex-transitIndex[k]));
-      p:=p*relativePeriod[k-1]+(1-p)*relativePeriod[k];      
-      freq:=1/p/SYS_SIZE;
+      p:=0.5-0.5*cos(pi/100*(timeStepIndex-transitIndex[k]));
     end else begin
-      freq:=1/relativePeriod[k]/SYS_SIZE;
+      result:=false;    
+      p:=1;
     end;
-  end;  
+    if odd(k) then begin
+      weight1:=  p; freq1:=relativeFreq[k  ]/SYS_SIZE;      
+      weight0:=1-p; freq0:=relativeFreq[k-1]/SYS_SIZE; 
+    end else begin
+      weight0:=  p; freq0:=relativeFreq[k  ]/SYS_SIZE;      
+      weight1:=1-p; freq1:=relativeFreq[k-1]/SYS_SIZE; 
+    end;    
+  end;
   
 FUNCTION gridF(CONST ax:double):double;  
   begin    
@@ -55,14 +61,17 @@ FUNCTION gridF(CONST ax:double):double;
   end;  
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
-  VAR d,q:double;
+  VAR d,q0,q1:double;
   begin  
-    d:=sqrt(rx*rx+ry*ry);    
-    d:=0.5*gridF(freq*d)/d*sqr(32/SYS_SIZE);
+    d:=sqrt(rx*rx+ry*ry);   
+    q0:=    abs(rx)+abs(ry) ;
+    q1:=max(abs(rx),abs(ry));    
+    d:=0.5*(weight0*gridF(freq0*q0)
+           +weight1*gridF(freq1*q1))/d*sqr(32/SYS_SIZE);    
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;
-
+  
 FUNCTION getInitialState: T_systemState;
   VAR i,j:longint;      
   begin

@@ -6,14 +6,14 @@ CONST
   dt                    =0.05;
   GRID_SIZE             =1;
 
-  REPULSION_LINEAR   =2;
+  REPULSION_LINEAR   =sqr(32/SYS_SIZE);
 
-  ANNIHILATION_THRESHOLD=0;
   DIFFUSION_BY_VELOCITY =0;
   DIFFUSION_BASE        =0;
+  REGROWTH_FACTOR       =0;
+  ANNIHILATION_FACTOR   =0.001;
 VAR 
-  REGROWTH_FACTOR    :double = 0;
-  ANNIHILATION_FACTOR:double = 0.01;
+  ANNIHILATION_THRESHOLD:double=0;
   
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
@@ -31,7 +31,6 @@ FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
                                                3571-100,
                                                4286-100,5000);
         relativePeriod:array[0..6] of double=(0.0719482421875,0.0824462890625,0.111053466796875,0.14287567138671875,0.19228210449218749,0.277447509765625,0.5076828002929687);
-        relativeRange :array[0..6] of double=(6.75,5.75,3.75,2.75,1.75,1.75,0.75);
   VAR k:longint;
       p,r:double;
   begin
@@ -41,31 +40,36 @@ FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
     if timeStepIndex-transitIndex[k]<=200 then begin
       result:=true;
       p:=0.5+0.5*cos(pi/200*(timeStepIndex-transitIndex[k]));
-      r:=p*relativeRange [k-1]+(1-p)*relativeRange[k];
       p:=p*relativePeriod[k-1]+(1-p)*relativePeriod[k];      
-      freq:=2*pi/p/SYS_SIZE;
+      freq:=1/p/SYS_SIZE;
     end else begin
-      freq:=2*pi/relativePeriod[k]/SYS_SIZE;
+      freq:=1/relativePeriod[k]/SYS_SIZE;
     end;
   end;  
-
+  
+FUNCTION gridF(CONST ax:double):double;  
+  begin    
+    if ax<1 
+    then result:=1+sqr(ax)*((1+2.4466748187071037)*sqr(ax)-2-2.4466748187071037)
+    else result:=sin(2*pi*abs(ax))*exp(-sqr(ax)/4);
+  end;  
+  
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR d,q:double;
   begin  
     d:=sqrt(rx*rx+ry*ry);    
-    if d>SYS_SIZE/2 then exit(zeroVec);
-    d:=0.4*(0.5+0.5*cos(pi*d/SYS_SIZE/2))*cos(freq*d)/sqr(d);
+    d:=0.5*gridF(freq*d)/d*sqr(32/SYS_SIZE);
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;
-
+  
 FUNCTION getInitialState: T_systemState;
   VAR i,j:longint;      
   begin
     case initialDensityVariant of
-      id_low:  begin REGROWTH_FACTOR:=0.01; ANNIHILATION_FACTOR:=0.0001; end; 
-      id_high: begin REGROWTH_FACTOR:=0.1 ; ANNIHILATION_FACTOR:=0.001;  end;
-      else     begin REGROWTH_FACTOR:=1   ; ANNIHILATION_FACTOR:=0.01;   end;
+      id_low:  ANNIHILATION_THRESHOLD:=1;
+      id_high: ANNIHILATION_THRESHOLD:=2;
+      else     ANNIHILATION_THRESHOLD:=4;
     end;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with result[i,j] do begin
       mass:=1+0.001*random;

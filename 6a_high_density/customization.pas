@@ -12,25 +12,25 @@ CONST
   DIFFUSION_BASE        =0;
   REGROWTH_FACTOR       =0;
   ANNIHILATION_FACTOR   =0.001;
-VAR 
+VAR
   ANNIHILATION_THRESHOLD:double=0;
-  
+
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel:T_vectorField);
 IMPLEMENTATION
-Uses math;
+USES math;
 VAR range:double=0;
     lastRange:double=1000;
     strength:double=0;
-    
+
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
-  begin    
-    range:=64-64*cos(timeStepIndex*2*pi/1000);     
+  begin
+    range:=64-64*cos(timeStepIndex*2*pi/1000);
     result:=abs(range-lastRange)>1;
     if result then lastRange:=range;
-    if range<32 then strength:=1 else strength:=sqr(32/range);    
+    if range<32 then strength:=1 else strength:=sqr(32/range);
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
@@ -43,9 +43,8 @@ FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
     result[1]:=ry*d;
   end;
 
-
 FUNCTION getInitialState: T_systemState;
-  VAR i,j:longint;      
+  VAR i,j:longint;
   begin
     case initialDensityVariant of
       id_low:  ANNIHILATION_THRESHOLD:=1;

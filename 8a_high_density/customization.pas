@@ -2,7 +2,7 @@ UNIT customization;
 INTERFACE
 USES vectors,commandLineHandling;
 CONST
-  SYMMETRIC_CONTINUATION=1;  
+  SYMMETRIC_CONTINUATION=1;
   dt                    =0.05;
   GRID_SIZE             =1;
 
@@ -12,23 +12,23 @@ CONST
   DIFFUSION_BASE        =0;
   REGROWTH_FACTOR       =0;
   ANNIHILATION_FACTOR   =0.001;
-VAR 
+VAR
   ANNIHILATION_THRESHOLD:double=0;
-  
+
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel:T_vectorField);
 IMPLEMENTATION
-Uses math;
+USES math;
 VAR range:double=0;
-    lastRange:double=1000;    
-    
+    lastRange:double=1000;
+
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
-  begin    
+  begin
     range:=16*(0.5-0.5*cos(timeStepIndex*2*pi/5000));
     result:=odd(timeStepIndex);
-    if result then lastRange:=range;    
+    if result then lastRange:=range;
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
@@ -42,7 +42,7 @@ FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   end;
 
 FUNCTION getInitialState: T_systemState;
-  VAR i,j:longint;      
+  VAR i,j:longint;
   begin
     case initialDensityVariant of
       id_low:  ANNIHILATION_THRESHOLD:=1;

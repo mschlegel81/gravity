@@ -6,7 +6,7 @@ INTERFACE
 
 USES
   Classes, sysutils, Forms, Controls, Graphics, Dialogs, ExtCtrls,
-  PopupNotifier, commandLineHandling, basicGraphics, simplerPhysics;
+  commandLineHandling, basicGraphics, simplerPhysics;
 
 TYPE
 
@@ -17,7 +17,7 @@ TYPE
     Image1: TImage;
     PROCEDURE FormCloseQuery(Sender: TObject; VAR CanClose: boolean);
     PROCEDURE FormCreate(Sender: TObject);
-    procedure FormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    PROCEDURE FormKeyDown(Sender: TObject; VAR key: word; Shift: TShiftState);
     PROCEDURE IdleTimer1Timer(Sender: TObject);
     PROCEDURE Image1Click(Sender: TObject);
   private
@@ -50,8 +50,8 @@ FUNCTION calcThread(p:pointer):ptrint;
   PROCEDURE addPicture(CONST writeAnimStream:boolean);
     begin
       if writeAnimStream then begin
-        {$ifdef DEBUGMODE}
-        log.append('Write frame @').append(compressedAnimStream.Position).appendLineBreak;
+        {$ifdef debugMode}
+        log.append('Write frame @').append(compressedAnimStream.position).appendLineBreak;
         {$endif}
         newPic^.writeCompressed(compressedAnimStream,prevPic);
       end;
@@ -61,15 +61,15 @@ FUNCTION calcThread(p:pointer):ptrint;
     end;
 
   PROCEDURE replay;
-    VAR replaying: Boolean;
+    VAR replaying: boolean;
     begin
       repeat
         new(newPic,create);
         log.append('Replay (')
            .append(calcFrameCount)
            .append(')')
-           {$ifdef DEBUGMODE}
-           .append(' @').append(compressedAnimStream.Position)
+           {$ifdef debugMode}
+           .append(' @').append(compressedAnimStream.position)
            {$endif}
            .appendLineBreak;
         replaying:=newPic^.loadCompressed(compressedAnimStream,prevPic);
@@ -84,12 +84,12 @@ FUNCTION calcThread(p:pointer):ptrint;
 
   FUNCTION transcode:boolean;
     VAR uncompressedAnimStream:TFileStream;
-        replaying: Boolean;
-        ref_replaying: Boolean;
+        replaying: boolean;
+        ref_replaying: boolean;
         ref_newPic: P_rgbPicture;
         validateCounter:longint=0;
     begin
-      uncompressedAnimStream:=TFileStream.Create(fileName_anim,fmOpenReadWrite or fmShareDenyWrite);
+      uncompressedAnimStream:=TFileStream.create(fileName_anim,fmOpenReadWrite or fmShareDenyWrite);
       uncompressedAnimStream.Seek(0,soBeginning);
       repeat
         new(newPic,create);
@@ -114,7 +114,7 @@ FUNCTION calcThread(p:pointer):ptrint;
         if ref_replaying and replaying then begin
           if not(newPic^.equals(ref_newPic)) then begin
             log.append('Validate (').append(validateCounter).append(') FAILURE!!!').appendLineBreak;
-            Beep;
+            beep;
             replaying:=false;
             result:=false;
           end else begin
@@ -126,7 +126,7 @@ FUNCTION calcThread(p:pointer):ptrint;
           then log.append('ADDITIONAL FRAME')
           else log.append('MISSING FRAME');
           log.appendLineBreak;
-          Beep;
+          beep;
           replaying:=false;
           result:=false;
         end;
@@ -147,10 +147,10 @@ FUNCTION calcThread(p:pointer):ptrint;
     randomize;
     queue:=P_animation(p);
     sys.create;
-    compressedReplayExists:=FileExists(fileName_replay);
+    compressedReplayExists:=fileExists(fileName_replay);
     if compressedReplayExists
-    then compressedAnimStream:=TFileStream.Create(fileName_replay,fmOpenReadWrite or fmShareDenyWrite)
-    else compressedAnimStream:=TFileStream.Create(fileName_replay,fmCreate        or fmShareDenyWrite);
+    then compressedAnimStream:=TFileStream.create(fileName_replay,fmOpenReadWrite or fmShareDenyWrite)
+    else compressedAnimStream:=TFileStream.create(fileName_replay,fmCreate        or fmShareDenyWrite);
 
     compressedAnimStream.Seek(0,soBeginning);
 
@@ -201,11 +201,11 @@ FUNCTION calcThread(p:pointer):ptrint;
 { TGravMainForm }
 
 PROCEDURE TGravMainForm.FormCreate(Sender: TObject);
-  var positionIndex: longint;
+  VAR positionIndex: longint;
   begin
     Application.title:=appTitle;
     extension:=1;
-    image1.Hint:=paramstr(0);
+    Image1.Hint:=paramStr(0);
     caption:=appTitle;
     queue.create;
     beginThread(@calcThread,@queue);
@@ -213,16 +213,16 @@ PROCEDURE TGravMainForm.FormCreate(Sender: TObject);
 
     if hasPositionParameter(positionIndex) then begin
       Left:=0;
-      Top :=0;
+      top :=0;
       while (positionIndex>0) do begin
-        while (left+2*Width+10<Screen.Width) and (positionIndex>0) do begin
-          left:=left+width+5;
+        while (Left+2*width+10<screen.width) and (positionIndex>0) do begin
+          Left:=Left+width+5;
           dec(positionIndex);
         end;
         if positionIndex>0 then begin;
           top:=top+height+40;
-          if top+height>screen.Height then top:=0;
-          left:=0;
+          if top+height>screen.height then top:=0;
+          Left:=0;
           dec(positionIndex);
         end;
       end;
@@ -233,7 +233,7 @@ PROCEDURE TGravMainForm.FormCreate(Sender: TObject);
     end;
   end;
 
-procedure TGravMainForm.FormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+PROCEDURE TGravMainForm.FormKeyDown(Sender: TObject; VAR key: word; Shift: TShiftState);
   begin
     if (key=187) or (key=107) then extension*=1.1;
     if (key=189) or (key=109) then begin

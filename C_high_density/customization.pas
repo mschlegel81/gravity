@@ -14,7 +14,7 @@ CONST
   REGROWTH_FACTOR=0;
   DIFFUSION_BY_VELOCITY=0;
   DIFFUSION_BASE       =0;
-  
+
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
@@ -43,23 +43,23 @@ FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
       result:=true;
       p:=0.5+0.5*cos(pi/200*(timeStepIndex-transitIndex[k]));
       r:=p*relativeRange [k-1]+(1-p)*relativeRange[k];
-      p:=p*relativePeriod[k-1]+(1-p)*relativePeriod[k];      
+      p:=p*relativePeriod[k-1]+(1-p)*relativePeriod[k];
       freq:=2*pi/p/SYS_SIZE;
     end else begin
       freq:=2*pi/relativePeriod[k]/SYS_SIZE;
     end;
-  end;  
+  end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR d,q:double;
-  begin  
-    d:=sqrt(rx*rx+ry*ry);    
+  begin
+    d:=sqrt(rx*rx+ry*ry);
     if d>SYS_SIZE/2 then exit(zeroVec);
     d:=0.4*(0.5+0.5*cos(pi*d/SYS_SIZE/2))*cos(freq*d)/sqr(d);
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;
-  
+
 FUNCTION getInitialState: T_systemState;
   VAR i,j:longint;
       massFactor:double;

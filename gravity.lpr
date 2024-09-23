@@ -17,7 +17,7 @@ USES
 
 begin
   RequireDerivedFormResource:=true;
-  Application.Title:='grav32';
+  Application.title:='grav32';
   Application.initialize;
   Application.title:=appTitle;
   Application.CreateForm(TGravMainForm, GravMainForm);

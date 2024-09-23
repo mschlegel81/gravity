@@ -263,12 +263,12 @@ FUNCTION T_rgbPicture.load(fileStream: TFileStream; CONST previous:P_rgbPicture)
   end;
 
 PROCEDURE T_rgbPicture.write(fileStream: TFileStream; CONST previous:P_rgbPicture);
-  var i: longint;
+  VAR i: longint;
       dataToWrite:array[0..SYS_SIZE*SYS_SIZE-1] of SmallInt;
   begin
     if previous=nil then fileStream.write(Pixels^,sizeOf(SmallInt)*SYS_SIZE*SYS_SIZE)
     else begin
-      for i:=0 to SYS_SIZE*SYS_SIZE-1 do dataToWrite[i]:=pixels[i]-previous^.Pixels[i];
+      for i:=0 to SYS_SIZE*SYS_SIZE-1 do dataToWrite[i]:=Pixels[i]-previous^.Pixels[i];
       fileStream.write(dataToWrite,sizeOf(SmallInt)*SYS_SIZE*SYS_SIZE)
     end;
     fileStream.write(mass,sizeOf(mass));
@@ -278,13 +278,13 @@ TYPE T_nodeKind=(intermediary,leaf);
      P_node=^T_node;
      T_node=record
        kind  : T_nodeKind;
-       symbol: smallint;
+       symbol: SmallInt;
        child : array[false..true] of P_node;
      end;
      P_builderNode=^T_builderNode;
      T_builderNode=record
        kind  : T_nodeKind;
-       symbol: smallint;
+       symbol: SmallInt;
        child : array[false..true] of P_node;
        count : int64;
      end;
@@ -415,7 +415,7 @@ FUNCTION T_bitArray.bits:T_arrayOfBoolean;
 PROCEDURE buildCode(OUT decodeRoot:P_node; OUT encodeTable:T_encodeTable);
   VAR table:array [0..1023] of P_builderNode;
 
-  FUNCTION initNode(CONST count:int64; CONST symbol:smallint; CONST kind:T_nodeKind):P_builderNode;
+  FUNCTION initNode(CONST count:int64; CONST symbol:SmallInt; CONST kind:T_nodeKind):P_builderNode;
     begin
       getMem(result,sizeOf(T_builderNode));
       result^.count:=count;
@@ -1545,13 +1545,13 @@ FUNCTION T_rgbPicture.loadCompressed(fileStream:TFileStream; CONST previous:P_rg
 
   FUNCTION refillBuffer:boolean;
     begin
-      bufferStartInStream:=fileStream.Position;
+      bufferStartInStream:=fileStream.position;
       bufferFill:=8*fileStream.read(buffer,1024);
       bufferCursor:=0;
       result:=bufferFill>0;
     end;
 
-  FUNCTION decode:smallint;
+  FUNCTION decode:SmallInt;
     VAR node:P_node;
     begin
       node:=decodeRoot;
@@ -1567,8 +1567,8 @@ FUNCTION T_rgbPicture.loadCompressed(fileStream:TFileStream; CONST previous:P_rg
   begin
     p:=fileStream.position;
     if previous=nil
-    then for i:=0 to SYS_SIZE*SYS_SIZE-1 do pixels[i]:=decode
-    else for i:=0 to SYS_SIZE*SYS_SIZE-1 do pixels[i]:=(previous^.Pixels[i]+decode) and 1023;
+    then for i:=0 to SYS_SIZE*SYS_SIZE-1 do Pixels[i]:=decode
+    else for i:=0 to SYS_SIZE*SYS_SIZE-1 do Pixels[i]:=(previous^.Pixels[i]+decode) and 1023;
     result:=entriesRead=SYS_SIZE*SYS_SIZE;
     if result then begin
       mass:=0;
@@ -1587,7 +1587,7 @@ PROCEDURE T_rgbPicture.writeCompressed(fileStream:TFileStream; CONST previous:P_
     begin
       toFlush:=bufferFill shr 3;
       if toFlush shl 3<bufferFill then inc(toFlush); //Round up to full byte
-      if toFlush>0 then fileStream.Write(buffer,toFlush);
+      if toFlush>0 then fileStream.write(buffer,toFlush);
       bufferFill:=0;
     end;
 
@@ -1603,17 +1603,17 @@ PROCEDURE T_rgbPicture.writeCompressed(fileStream:TFileStream; CONST previous:P_
       end;
     end;
 
-  var i: longint;
+  VAR i: longint;
   begin
     if previous=nil
-    then for i:=0 to SYS_SIZE*SYS_SIZE-1 do encode(pixels[i])
-    else for i:=0 to SYS_SIZE*SYS_SIZE-1 do encode((pixels[i]-previous^.Pixels[i]) and 1023);
+    then for i:=0 to SYS_SIZE*SYS_SIZE-1 do encode(Pixels[i])
+    else for i:=0 to SYS_SIZE*SYS_SIZE-1 do encode((Pixels[i]-previous^.Pixels[i]) and 1023);
     flushBuffer;
   end;
 
 FUNCTION T_rgbPicture.equals(CONST other:P_rgbPicture):boolean;
   VAR i:longint;
-      a,b:smallint;
+      a,b:SmallInt;
   begin
     for i:=0 to SYS_SIZE*SYS_SIZE-1 do begin
       a:=       Pixels[i];
@@ -1623,7 +1623,7 @@ FUNCTION T_rgbPicture.equals(CONST other:P_rgbPicture):boolean;
     result:=true;
   end;
 
-initialization
+INITIALIZATION
   buildCode(decodeRoot,encodeTable);
 end.
 

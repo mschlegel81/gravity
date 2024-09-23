@@ -14,7 +14,7 @@ CONST
   REGROWTH_FACTOR=0;
   DIFFUSION_BY_VELOCITY=0;
   DIFFUSION_BASE       =0;
-  
+
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
@@ -26,10 +26,10 @@ FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
     max_range:=(0.7*timeStepIndex/1000)*SYS_SIZE;
     result:=(timeStepIndex and 7)=0;
   end;
-  
+
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR d:double;
-  begin      
+  begin
     d:=sqrt(rx*rx+ry*ry);
     if d>max_range then exit(zeroVec) else d:=0.002*(0.5+0.5*cos(pi*d/max_range));
     result[0]:=rx*d;

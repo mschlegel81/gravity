@@ -14,26 +14,26 @@ CONST
   REGROWTH_FACTOR=0;
   DIFFUSION_BY_VELOCITY=0;
   DIFFUSION_BASE       =0;
-  
+
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel:T_vectorField);
 IMPLEMENTATION
-VAR shift:double;
+VAR Shift:double;
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
   begin
-    shift:=timeStepIndex/1000*2*pi;
+    Shift:=timeStepIndex/1000*2*pi;
     result:=(timeStepIndex and 31)=0;
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
-  VAR d:double;      
+  VAR d:double;
   begin
     d:=rx*rx+ry*ry;
     d:=0.2*
-       (cos(abs(rx)/32*2*pi-shift))*
-       (cos(abs(ry)/32*2*pi+shift))/d;       
+       (cos(abs(rx)/32*2*pi-Shift))*
+       (cos(abs(ry)/32*2*pi+Shift))/d;
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;

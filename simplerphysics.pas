@@ -97,8 +97,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
       staggeredAcceleration:T_vectorField;
 
   CONST DT_MIN=dt/200; //not more than 200 sub steps
-        MAX_TRANSPORT_RANGE    =2*0.7141*GRID_SIZE;
-        MAX_ALLOWED_AREA_CHANGE=0.3*GRID_SIZE*GRID_SIZE;
+        MAX_TRANSPORT_RANGE    =2*GRID_SIZE;
         SPEED_CAP=0.5*MAX_TRANSPORT_RANGE/DT_MIN;
   VAR capping:boolean=false;
       dtRest:double;
@@ -108,20 +107,31 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
     VAR i,j:longint;
         maxJerk:double=epsilon;
         jerk:double;
-        a,da:T_2dVector;
+        a,da,v:T_2dVector;
+        maxSpeed:double=epsilon;
+        speed:double;
     begin
       result:=dtRest;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do if value[i,j].mass>UPPER_C1_LEVEL then begin
         a :=value[i,j].a *(1/value[i,j].mass);
         da:=value[i,j].da*(1/value[i,j].mass);
+        v :=value[i,j].p *(1/value[i,j].mass);
         jerk:=abs(a[0]-da[0]-staggeredAcceleration[(i+mask) and mask,j,0]); if jerk>maxJerk then maxJerk:=jerk;
         jerk:=abs(a[0]+da[0]-staggeredAcceleration[ i               ,j,0]); if jerk>maxJerk then maxJerk:=jerk;
         jerk:=abs(a[1]-da[1]-staggeredAcceleration[i,(j+mask) and mask,1]); if jerk>maxJerk then maxJerk:=jerk;
         jerk:=abs(a[1]+da[1]-staggeredAcceleration[i, j               ,1]); if jerk>maxJerk then maxJerk:=jerk;
+        speed:=sqr(v[0])+sqr(v[1]);                                         if speed>maxSpeed then maxSpeed:=speed;
       end;
+      maxSpeed:=MAX_TRANSPORT_RANGE/sqrt(maxSpeed);
       maxJerk:=maxJerk/(simTime-prevAccelTime);
 
-      result:=Power(1E-1/maxJerk,1/3);
+      result:=power(1E-1/maxJerk,1/3);
+      if maxSpeed<result then result:=maxSpeed;
+      if result<DT_MIN then begin
+        result:=DT_MIN;
+        if not(capping) then log.append('WARNING: Speed limit exceeded. Capping...').appendLineBreak;
+        capping:=true;
+      end;
       if result>dtRest
       then result:=dtRest
       else result:=dtRest/ceil(dtRest/result);

@@ -5,16 +5,16 @@ UNIT vectors;
 INTERFACE
 TYPE
   T_2dVector=array[0..1] of double;
-  T_complex =record re,im:double; end;
+  T_Complex =record re,im:double; end;
   T_systemState=array[0..SYS_SIZE-1,0..SYS_SIZE-1] of record mass:double; p,dp,a,da:T_2dVector; end;
   T_vectorField=array[0..SYS_SIZE-1,0..SYS_SIZE-1] of T_2dVector;
 
   T_arrayOfComplex=record
     fill:longint;
-    dat:array[0..SYS_SIZE-1] of T_complex;
+    dat:array[0..SYS_SIZE-1] of T_Complex;
   end;
-  T_scalarFieldFFT=array[0..SYS_SIZE-1,0..SYS_SIZE-1     ] of T_complex;
-  T_vectorFieldFFT=array[0..1,0..SYS_SIZE-1,0..SYS_SIZE-1] of T_complex;
+  T_scalarFieldFFT=array[0..SYS_SIZE-1,0..SYS_SIZE-1     ] of T_Complex;
+  T_vectorFieldFFT=array[0..1,0..SYS_SIZE-1,0..SYS_SIZE-1] of T_Complex;
 CONST
   epsilon=1E-10;
   zeroVec:T_2dVector=(0,0);
@@ -44,31 +44,31 @@ OPERATOR -(CONST x,y:T_2dVector):T_2dVector;
     result[1]:=x[1]-y[1];
   end;
 
-OPERATOR +(CONST x,y:T_complex):T_complex; inline;
+OPERATOR +(CONST x,y:T_Complex):T_Complex; inline;
   begin
     result.re:=x.re+y.re;
     result.im:=x.im+y.im;
   end;
 
-OPERATOR -(CONST x,y:T_complex):T_complex; inline;
+OPERATOR -(CONST x,y:T_Complex):T_Complex; inline;
   begin
     result.re:=x.re-y.re;
     result.im:=x.im-y.im;
   end;
 
-OPERATOR *(CONST x,y:T_complex):T_complex; inline;
+OPERATOR *(CONST x,y:T_Complex):T_Complex; inline;
   begin
     result.re:=x.re*y.re-x.im*y.im;
     result.im:=x.re*y.im+y.re*x.im;
   end;
 
-OPERATOR *(CONST x:T_complex; CONST y:double):T_complex; inline;
+OPERATOR *(CONST x:T_Complex; CONST y:double):T_Complex; inline;
   begin
     result.re:=x.re*y;
     result.im:=x.im*y;
   end;
 
-CONST ROOT_OF_UNITY:array[0..255] of T_complex =
+CONST ROOT_OF_UNITY:array[0..255] of T_Complex =
   ((re: 1.0                 ; im: 0                   ),
    (re: 0.9996988186962041  ; im: 0.024541228522912288),
    (re: 0.9987954562051724  ; im: 0.049067674327418015),
@@ -334,7 +334,7 @@ FUNCTION FastFourierTransform(CONST X:T_arrayOfComplex; CONST inverse:boolean):T
       innerFT:array [0..1] of T_arrayOfComplex;
       i,j,k:longint;
       lut_factor:longint;
-      r:T_complex;
+      r:T_Complex;
   begin
     if X.fill=1 then exit(X);
     N2:=x.fill shr 1;
@@ -363,7 +363,6 @@ FUNCTION FastFourierTransform(CONST X:T_arrayOfComplex; CONST inverse:boolean):T
     for i:=0 to N2-1 do result.dat[   i]:=(innerFT[0].dat[i]+innerFT[1].dat[i])*commonFactor;
     for i:=0 to N2-1 do result.dat[N2+i]:=(innerFT[0].dat[i]-innerFT[1].dat[i])*commonFactor;
   end;
-
 
 FUNCTION massFFT(CONST s:T_systemState):T_scalarFieldFFT;
   VAR i,j:longint;
@@ -428,7 +427,6 @@ OPERATOR *(CONST x:T_scalarFieldFFT; CONST y:T_vectorFieldFFT):T_vectorField;
       end;
     end;
   end;
-
 
 end.
 

@@ -11,10 +11,10 @@ CONST
   ANNIHILATION_THRESHOLD=0;
   DIFFUSION_BY_VELOCITY =0;
   DIFFUSION_BASE        =0;
-VAR 
+VAR
   REGROWTH_FACTOR    :double = 0;
   ANNIHILATION_FACTOR:double = 0.01;
-  
+
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
@@ -29,15 +29,15 @@ FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
     flag:=false;
     for k in switchPoint do begin
       flag:=not(flag);
-      if k=timeStepIndex then exit(true) else 
+      if k=timeStepIndex then exit(true) else
       if k>timeStepIndex then exit(false);
-    end;    
-  end;  
+    end;
+  end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR ix,iy:longint;
       d:double;
-  begin  
+  begin
     ix:=round(rx/8); iy:=round(ry/8);
     if (ix=0) and (iy=0) then exit(zeroVec);
     result:=zeroVec;
@@ -46,13 +46,13 @@ FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
     if odd(ix xor iy) xor flag
     then result[0]:=rx*d
     else result[1]:=ry*d;
-  end;  
-  
+  end;
+
 FUNCTION getInitialState: T_systemState;
-  VAR i,j:longint;      
+  VAR i,j:longint;
   begin
     case initialDensityVariant of
-      id_low:  begin REGROWTH_FACTOR:=0.01; ANNIHILATION_FACTOR:=0.0001; end; 
+      id_low:  begin REGROWTH_FACTOR:=0.01; ANNIHILATION_FACTOR:=0.0001; end;
       id_high: begin REGROWTH_FACTOR:=0.1 ; ANNIHILATION_FACTOR:=0.001;  end;
       else     begin REGROWTH_FACTOR:=1   ; ANNIHILATION_FACTOR:=0.01;   end;
     end;

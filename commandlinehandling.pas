@@ -60,13 +60,13 @@ FUNCTION initialDensityVariant: T_initialDensityEnum;
   end;
 
 FUNCTION hasPositionParameter(OUT index:longint):boolean;
-  VAR rest:String;
-      i: Integer;
+  VAR rest:string;
+      i: integer;
   begin
     result:=false;
-    for i:=1 to ParamCount do if copy(paramstr(i),1,4)='pos=' then begin
-      rest:=copy(ParamStr(i),5,length(paramstr(i)));
-      index:=StrToIntDef(rest,-1);
+    for i:=1 to paramCount do if copy(paramStr(i),1,4)='pos=' then begin
+      rest:=copy(paramStr(i),5,length(paramStr(i)));
+      index:=strToIntDef(rest,-1);
       result:=index>=0;
       if result then exit(result);
     end;

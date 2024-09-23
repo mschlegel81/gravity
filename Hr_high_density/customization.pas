@@ -11,10 +11,10 @@ CONST
   ANNIHILATION_THRESHOLD=0;
   DIFFUSION_BY_VELOCITY =0;
   DIFFUSION_BASE        =0;
-VAR 
+VAR
   REGROWTH_FACTOR    :double = 0;
   ANNIHILATION_FACTOR:double = 0.01;
-  
+
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
@@ -40,34 +40,34 @@ FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
     if timeStepIndex-transitIndex[k]<=200 then begin
       result:=true;
       p:=0.5+0.5*cos(pi/200*(timeStepIndex-transitIndex[k]));
-      p:=p*relativePeriod[k-1]+(1-p)*relativePeriod[k];      
+      p:=p*relativePeriod[k-1]+(1-p)*relativePeriod[k];
       freq:=1/p/SYS_SIZE;
     end else begin
       freq:=1/relativePeriod[k]/SYS_SIZE;
     end;
-  end;  
-  
-FUNCTION gridF(CONST ax:double):double;  
-  begin    
-    if ax<1 
+  end;
+
+FUNCTION gridF(CONST ax:double):double;
+  begin
+    if ax<1
     then result:=1+sqr(ax)*((1+2.4466748187071037)*sqr(ax)-2-2.4466748187071037)
     else result:=sin(2*pi*abs(ax))*exp(-sqr(ax)/4);
-  end;  
+  end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR d,q:double;
-  begin  
-    d:=sqrt(rx*rx+ry*ry);    
+  begin
+    d:=sqrt(rx*rx+ry*ry);
     d:=0.5*gridF(freq*d)/d*sqr(32/SYS_SIZE);
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;
 
 FUNCTION getInitialState: T_systemState;
-  VAR i,j:longint;      
+  VAR i,j:longint;
   begin
     case initialDensityVariant of
-      id_low:  begin REGROWTH_FACTOR:=0.01; ANNIHILATION_FACTOR:=0.0001; end; 
+      id_low:  begin REGROWTH_FACTOR:=0.01; ANNIHILATION_FACTOR:=0.0001; end;
       id_high: begin REGROWTH_FACTOR:=0.1 ; ANNIHILATION_FACTOR:=0.001;  end;
       else     begin REGROWTH_FACTOR:=1   ; ANNIHILATION_FACTOR:=0.01;   end;
     end;

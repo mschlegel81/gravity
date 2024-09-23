@@ -7,14 +7,14 @@ CONST
   GRID_SIZE             =1;
 
   REPULSION_LINEAR   =0.05;
-  
+
   ANNIHILATION_THRESHOLD=1E10;
   ANNIHILATION_FACTOR   =0;
 
   REGROWTH_FACTOR=0;
   DIFFUSION_BY_VELOCITY=0;
   DIFFUSION_BASE       =0;
-  
+
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
@@ -30,7 +30,7 @@ FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR d:double;
-  begin      
+  begin
     d:=sqrt(rx*rx+ry*ry);
     if d>max_range then exit(zeroVec) else d:=strength*(sin(2*pi*d/max_range))/d;
     result[0]:=rx*d;

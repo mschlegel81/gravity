@@ -14,7 +14,7 @@ CONST
   REGROWTH_FACTOR=0;
   DIFFUSION_BY_VELOCITY=0;
   DIFFUSION_BASE       =0;
-  
+
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
@@ -29,15 +29,15 @@ FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
     flag:=false;
     for k in switchPoint do begin
       flag:=not(flag);
-      if k=timeStepIndex then exit(true) else 
+      if k=timeStepIndex then exit(true) else
       if k>timeStepIndex then exit(false);
-    end;    
-  end;  
+    end;
+  end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR ix,iy:longint;
       d:double;
-  begin  
+  begin
     ix:=round(rx/8); iy:=round(ry/8);
     if (ix=0) and (iy=0) then exit(zeroVec);
     result:=zeroVec;
@@ -46,8 +46,8 @@ FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
     if odd(ix xor iy) xor flag
     then result[0]:=rx*d
     else result[1]:=ry*d;
-  end; 
-  
+  end;
+
 FUNCTION getInitialState: T_systemState;
   VAR i,j:longint;
       massFactor:double;

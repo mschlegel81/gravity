@@ -14,26 +14,26 @@ CONST
 
   DIFFUSION_BY_VELOCITY=0;
   DIFFUSION_BASE       =0;
-  
+
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel:T_vectorField);
 IMPLEMENTATION
-Uses math;
+USES math;
 VAR range:double=0;
     strength:double=0;
-    lastRange:double=1000;       
-    
+    lastRange:double=1000;
+
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
-  begin    
+  begin
     range:=SYS_SIZE*0.25*(0.48-0.52*cos(timeStepIndex*6*pi/5000));
     result:=(range<5) and (range>0) or (abs(range-lastRange)>0.5);
     if range<0 then begin
       range:=0;
       strength:=0;
     end else strength:=0.5;
-    if result then lastRange:=range;    
+    if result then lastRange:=range;
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
@@ -54,9 +54,9 @@ FUNCTION getInitialState: T_systemState;
       id_low:  begin massFactor:= 0.5; end;
       id_high: begin massFactor:= 1  ; end;
       else     begin massFactor:= 2  ; end;
-    end;	
+    end;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with result[i,j] do begin
-      mass:=massFactor+0.001*random;  
+      mass:=massFactor+0.001*random;
 	  p:=zeroVec;
 	end;
   end;

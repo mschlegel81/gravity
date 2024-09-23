@@ -12,9 +12,9 @@ CONST
   DIFFUSION_BASE        =0;
   REGROWTH_FACTOR       =0;
   ANNIHILATION_FACTOR   =0.001;
-VAR 
+VAR
   ANNIHILATION_THRESHOLD:double=0;
-  
+
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
 FUNCTION getInitialState:T_systemState;
@@ -29,16 +29,15 @@ FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR d:double;
-  begin      
+  begin
     d:=sqrt(rx*rx+ry*ry);
     if d>max_range then exit(zeroVec) else d:=0.002*(0.5+0.5*cos(pi*d/max_range));
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;
 
-
 FUNCTION getInitialState: T_systemState;
-  VAR i,j:longint;      
+  VAR i,j:longint;
   begin
     case initialDensityVariant of
       id_low:  ANNIHILATION_THRESHOLD:=1;

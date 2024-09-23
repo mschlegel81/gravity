@@ -77,8 +77,13 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
 
 { T_cellSystem }
 CONSTRUCTOR T_cellSystem.create;
+  VAR i,j:longint;
   begin
     value:=getInitialState;
+    for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do begin
+      dp:=zeroVec;
+      da:=zeroVec;
+    end;
     prevAccelTime:=-1E50;
     attractionInitialized:=false;
   end;
@@ -97,84 +102,91 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
         SPEED_CAP=0.5*MAX_TRANSPORT_RANGE/DT_MIN;
   VAR capping:boolean=false;
       dtRest:double;
+      simTime:double;
   FUNCTION calcTimeStep:double;
     CONST mask=SYS_SIZE-1;
     VAR i,j:longint;
-        vMax,v,areaChange,maxAreaChange:double;
+        maxJerk:double=epsilon;
+        jerk:double;
+        a,da:T_2dVector;
     begin
       result:=dtRest;
-      vMax:=epsilon;
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with value[i,j] do if mass>UPPER_C10_LEVEL then begin
-        v:=(p[0]*p[0]+p[1]*p[1]+(a[0]*a[0]+a[1]*a[1])*dtRest*dtRest)/(mass*mass);
-        if v>vMax then vMax:=v;
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do if value[i,j].mass>UPPER_C1_LEVEL then begin
+        a :=value[i,j].a *(1/value[i,j].mass);
+        da:=value[i,j].da*(1/value[i,j].mass);
+        jerk:=abs(a[0]-da[0]-staggeredAcceleration[(i+mask) and mask,j,0]); if jerk>maxJerk then maxJerk:=jerk;
+        jerk:=abs(a[0]+da[0]-staggeredAcceleration[ i               ,j,0]); if jerk>maxJerk then maxJerk:=jerk;
+        jerk:=abs(a[1]-da[1]-staggeredAcceleration[i,(j+mask) and mask,1]); if jerk>maxJerk then maxJerk:=jerk;
+        jerk:=abs(a[1]+da[1]-staggeredAcceleration[i, j               ,1]); if jerk>maxJerk then maxJerk:=jerk;
       end;
-      vMax:=sqrt(vMax);
-      result:=MAX_TRANSPORT_RANGE/vMax;
-      if result<DT_MIN then begin
-        result:=DT_MIN;
-        if not(capping) then log.append('WARNING: Speed limit exceeded. Capping...').appendLineBreak;
-        capping:=true;
-      end else begin
-        maxAreaChange := epsilon;
-        for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do if value[i,j].mass>UPPER_C10_LEVEL then begin
-          areaChange:=abs((staggeredAcceleration[i,j,1]-staggeredAcceleration[i,(j+1) and mask,1])
-                         +(staggeredAcceleration[i,j,0]-staggeredAcceleration[(i+1) and mask,j,0]));
-          if areaChange>maxAreaChange then maxAreaChange:=areaChange;
-        end;
-        result:=max(DT_MIN,min(result,sqrt(MAX_ALLOWED_AREA_CHANGE/maxAreaChange)));
-      end;
+      maxJerk:=maxJerk/(simTime-prevAccelTime);
 
+      result:=Power(1E-1/maxJerk,1/3);
       if result>dtRest
       then result:=dtRest
       else result:=dtRest/ceil(dtRest/result);
     end;
 
-  VAR simTime:double;
   PROCEDURE transport(CONST dtEff:double);
     CONST mask=SYS_SIZE-1;
     VAR i,j,ti,tj:longint;
         x0,x1,y0,y1,
         cellX0,cellX1,cellY0,cellY1,
-        wx,wy:double;
-        acc,v:T_2dVector;
+        wx,wy,wxy:double;
+        new_a,new_p:T_2dVector;
         f,
         vx0,vx1,vy0,vy1,
         ax0,ax1,ay0,ay1,
         jx0,jx1,jy0,jy1:double;
         jerkFactor:double;
+        density:double;
 
     begin
       jerkFactor:=dtEff*0.5/(simTime-prevAccelTime);
       prevAccelTime:=simTime;
 
       //Lagrangian transport:
-      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with newState[i,j] do begin mass:=0; p:=zeroVec; a:=zeroVec; end;
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with newState[i,j] do begin mass:=0; p:=zeroVec; dp:=zeroVec; a:=zeroVec; da:=zeroVec; end;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
         with value[i,j] do begin
           //Regrowing mass is added "with zero impulse"
           mass+=REGROWTH_FACTOR*dtEff;
-
           if mass>epsilon
           then begin
-            v  :=p*(1/mass);
-            acc:=a*(1/mass);
+            p *=(1/mass);
+            a *=(1/mass);
+            dp*=(1/mass);
+            da*=(1/mass);
           end else begin
-            v  :=zeroVec;
-            acc:=zeroVec;
+            p :=zeroVec;
+            a :=zeroVec;
+            dp:=zeroVec;
+            da:=zeroVec;
           end;
           if capping and (mass>=UPPER_BLACK_LEVEL) then begin //cap speed
             //squared speed:
-            f:=sqr(v[0])+sqr(v[1]);
-            if f>SPEED_CAP*SPEED_CAP then v*=0.99*SPEED_CAP/sqrt(f);
+            f:=sqr(p[0])+sqr(p[1]);
+            if f>SPEED_CAP*SPEED_CAP then begin
+              f:=0.99*SPEED_CAP/sqrt(f);
+              p *=f;
+              dp*=f;
+              a *=f;
+              da*=f;
+            end;
           end;
-
           if (ANNIHILATION_FACTOR>0) and (mass>ANNIHILATION_THRESHOLD) then begin
             wx:=ANNIHILATION_FACTOR*dtEff;
             mass*=(1 + wx*((ANNIHILATION_THRESHOLD-mass) + wx*(sqr(mass) + ANNIHILATION_THRESHOLD*0.5*(ANNIHILATION_THRESHOLD - 3*mass))));
           end;
-
+          vx0:=p[0]-dp[0];
+          vx1:=p[0]+dp[0];
+          ax0:=a[0]-da[0];
+          ax1:=a[0]+da[0];
+          vy0:=p[1]-dp[1];
+          vy1:=p[1]+dp[1];
+          ay0:=a[1]-da[1];
+          ay1:=a[1]+da[1];
         end;
-
         //a = d²x/dt²
         //j = d³x/dt³ = (a(t_current)-a(t_prev))/(t_current-t_prev)
         //            = (a(t_current)-a(t_prev))*jerkFactor
@@ -183,34 +195,19 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
         //x = x0 + dt*v + dt²/2*a + dt³/6*j
         //  = x0 + dt*(v+dt/2*(a+dt/3*j))
 
-        ax0:=staggeredAcceleration[(i+mask) and mask,j,0];
-        jx0:=(ax0-acc[0])*jerkFactor;
-        vx0:=         v[0]+dtEff    *(ax0+jx0);
-        x0 :=i+dtEff*(v[0]+dtEff*0.5*(ax0+jx0*0.66666666));
-
-        ax1:=staggeredAcceleration[i,j,0];
-        jx1:=(ax1-acc[0])*jerkFactor;
-        vx1:=v[0]+dtEff*(ax1 +jx1);
-        x1 :=i+1 +dtEff*(v[0]+dtEff*0.5*(ax1+jx1*0.66666666));
-
-        ay0:=staggeredAcceleration[i,(j+mask) and mask,1];
-        jy0:=(ay0-acc[1])*jerkFactor;
-        vy0:=v[1]+dtEff*(ay0 +jy0);
-        y0 :=j   +dtEff*(v[1]+dtEff*0.5*(ay0+jy0*0.66666666));
-
-        ay1:=staggeredAcceleration[i,j,1];
-        jy1:=(ay1-acc[1])*jerkFactor;
-        vy1:=v[1]+dtEff*(ay1 +jy1);
-        y1 :=j+1 +dtEff*(v[1]+dtEff*0.5*(ay1+jy1*0.66666666));
+        f:=staggeredAcceleration[(i+mask) and mask,j,0]; jx0:=(f-ax0)*jerkFactor; ax0:=f; x0:=i  +dtEff*(vx0+dtEff*0.5*(ax0+jx0*0.6666666666666666666666)); vx0+=dtEff*(ax0+jx0);
+        f:=staggeredAcceleration[ i               ,j,0]; jx1:=(f-ax1)*jerkFactor; ax1:=f; x1:=i+1+dtEff*(vx1+dtEff*0.5*(ax1+jx1*0.6666666666666666666666)); vx1+=dtEff*(ax1+jx1);
+        f:=staggeredAcceleration[i,(j+mask) and mask,1]; jy0:=(f-ay0)*jerkFactor; ay0:=f; y0:=j  +dtEff*(vy0+dtEff*0.5*(ay0+jy0*0.6666666666666666666666)); vy0+=dtEff*(ay0+jy0);
+        f:=staggeredAcceleration[i, j               ,1]; jy1:=(f-ay1)*jerkFactor; ay1:=f; y1:=j+1+dtEff*(vy1+dtEff*0.5*(ay1+jy1*0.6666666666666666666666)); vy1+=dtEff*(ay1+jy1);
 
         if x1<x0+1 then begin x0:=(x0+x1)*0.5-0.5; x1:=x0+1; end;
         if y1<y0+1 then begin y0:=(y0+y1)*0.5-0.5; y1:=y0+1; end;
 
-        value[i,j].mass*=1/((x1-x0)*(y1-y0));
-        vx0*=value[i,j].mass; vx1*=value[i,j].mass; vx1:=(vx1-vx0)/(x1-x0);
-        vy0*=value[i,j].mass; vy1*=value[i,j].mass; vy1:=(vy1-vy0)/(y1-y0);
-        ax0*=value[i,j].mass; ax1*=value[i,j].mass; ax1:=(ax1-ax0)/(x1-x0);
-        ay0*=value[i,j].mass; ay1*=value[i,j].mass; ay1:=(ay1-ay0)/(y1-y0);
+        density:=value[i,j].mass/((x1-x0)*(y1-y0));
+        vx0*=density; vx1*=density; vx1:=(vx1-vx0)/(x1-x0);
+        vy0*=density; vy1*=density; vy1:=(vy1-vy0)/(y1-y0);
+        ax0*=density; ax1*=density; ax1:=(ax1-ax0)/(x1-x0);
+        ay0*=density; ay1*=density; ay1:=(ay1-ay0)/(y1-y0);
         for ti:=floor(x0) to floor(x1+1) do begin
           //intersection of intervals [ti,ti+1] and [x0,x1]
           // = [max(ti,x0),min(x1,ti+1)] -> weight =
@@ -218,26 +215,30 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
           cellX1:=min(x1,ti+1);
           wx:=cellX1-cellX0;
           f:=((cellX0+cellX1)*0.5-x0);
-          v  [0]:=f*vx1+vx0;
-          acc[0]:=f*ax1+ax0;
+          new_p[0]:=f*vx1+vx0;
+          new_a[0]:=f*ax1+ax0;
           if wx>0 then for tj:=floor(y0) to floor(y1+1) do begin
             cellY0:=max(y0,tj);
             cellY1:=min(y1,tj+1);
-            wy:=(cellY1-cellY0)*wx;
+            wy:=cellY1-cellY0;
+            wxy:=wx*wy;
             if wy>0 then with newState[ti and mask,tj and mask] do begin
               f:=((cellY0+cellY1)*0.5-y0);
-              v  [1]:=f*vy1+vy0;
-              acc[1]:=f*ay1+ay0;
-              mass+=value[i,j].mass*wy;
-              p   +=v              *wy;
-              a   +=acc            *wy;
+              new_p[1]:=f*vy1+vy0;
+              new_a[1]:=f*ay1+ay0;
+              mass+=density*wxy;
+              p   +=new_p  *wxy;
+              a   +=new_a  *wxy;
+              dp[0]+=0.5*vx1*wxy*wx;
+              dp[1]+=0.5*vy1*wxy*wy;
+              da[0]+=0.5*ax1*wxy*wx;
+              da[1]+=0.5*ay1*wxy*wy;
             end;
           end;
         end;
       end;
       value:=newState;
     end;
-
 
   VAR subStepsTaken:longint=0;
       dtEff:double;
@@ -255,7 +256,6 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
       staggeredAcceleration:=massFFT(value)*cachedAttraction;;
       simTime:=(timeStepIndex+1)*dt-dtRest;
       addBackgroundAcceleration(simTime/dt,staggeredAcceleration);
-
       dtEff:=calcTimeStep;
       transport(dtEff);
       dtRest-=dtEff;

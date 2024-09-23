@@ -6,7 +6,7 @@ INTERFACE
 TYPE
   T_2dVector=array[0..1] of double;
   T_complex =record re,im:double; end;
-  T_systemState=array[0..SYS_SIZE-1,0..SYS_SIZE-1] of record mass:double; p,a:T_2dVector; end;
+  T_systemState=array[0..SYS_SIZE-1,0..SYS_SIZE-1] of record mass:double; p,dp,a,da:T_2dVector; end;
   T_vectorField=array[0..SYS_SIZE-1,0..SYS_SIZE-1] of T_2dVector;
 
   T_arrayOfComplex=record

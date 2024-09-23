@@ -2,43 +2,36 @@ USE cpuMonitor, util, rebuild;
 
 MAX_GRAV_INSTANCES:=12;
 
-runningGravTasks->begin
-  running:=occupiedIndexes.getInner(0).intersect(forcedRunningGravTasks);
-  timeout:=scriptTime+5;
-  occupiedIndexes.getInner(0).minus(running).each(key,occupiedIndexes[key]:=void);
-save;
-  occupiedIndexes.size>=MAX_GRAV_INSTANCES AND scriptTime>timeout
-  ? begin
-      running:=forcedRunningGravTasks;
-      timeout:=scriptTime+5;
-    end
-  : void;
-  running;
+check_running_instances->begin
+  if occupiedIndexes.size>=MAX_GRAV_INSTANCES then begin
+    sleep(1);
+    running:=forcedRunningGravTasks;
+    for key in occupiedIndexes.getInner(0).minus(running) do occupiedIndexes[key]:=void;
+    writeAllDataStores;
+  end;
+  occupiedIndexes.size;
 end;
 
-positionParameter(execName:String)->begin
+synchronized execute(execName:String,replay:Boolean)->begin
   nextPP:=0;
 save;
-  while nextPP in occupiedIndexes.getInner(1) do nextPP+=1;
-  nextPP>=MAX_GRAV_INSTANCES
-  ? begin
-      nextPP:=0;
-      occupiedIndexes.getInner(0).minus(runningGravTasks).each(key,occupiedIndexes[key]:=void);
-      while nextPP in occupiedIndexes.getInner(1) do nextPP+=1;
-    end
-  : void;
+  while nextPP in occupiedIndexes.getInner(1) do nextPP:=nextPP+1;
+  if nextPP>=MAX_GRAV_INSTANCES then begin
+    check_running_instances;
+    nextPP:=0;
+    while nextPP in occupiedIndexes.getInner(1) do nextPP:=nextPP+1;
+  end;
   occupiedIndexes[execName.systemSpecificFilename]:=nextPP;
   writeAllDataStores;
-  P:=nextPP>=MAX_GRAV_INSTANCES ? void : 'pos='&nextPP;
-  nextPP+=1;
-  P;
-end;
-
-execute(execName:String,replay:Boolean)->
+  positionParameter:=nextPP>=MAX_GRAV_INSTANCES ? void : 'pos='&nextPP;
+  nextPP:=(nextPP+1) mod MAX_GRAV_INSTANCES;
+  positionParameter;
   execAsync(execName.systemSpecificFilename,[execName.matches('low_density') ? 'ld' :
                                              execName.matches('high_density') ? 'hd' : void,
                                              replay ? 'replay' : void,
-                                                                 positionParameter(execName)].{$L==[] ? void : $L});
+                                                                 positionParameter].{$L==[] ? void : $L});
+
+end;
 
 
 mutable toClear:=0;
@@ -93,6 +86,10 @@ main(...)->begin
     arg=='build' ? hasBuildFlag:=true :
     matchPattern:=arg);
 
+  log('hasReplayFlag=',hasReplayFlag);
+  log('hasBuildFlag=',hasBuildFlag);
+  log('matchPatterh=',matchPattern.escape);
+
   consoleWidth:=exec('cmd',['/C','mode','con'])[0].filter((line)->line.matches(': *\d+$')).head(2).trailing.split(':')[1].trim.softCast-1;
   firstQuestion:=true;
   userSignal:='';
@@ -109,14 +106,14 @@ main(...)->begin
   .filter((exe)->exe.matches(matchPattern))
   .filter((exe)->hasBuildFlag AND exeIsMissing(exe) OR fileExists(exe))
   .exeSorting
-  .each(execName,userSignal==QUIT ? void : execName.systemSpecificFilename in runningGravTasks ? tPrint('          ',execName.relativeFileName,' is already running') :
+  .each(execName,userSignal==QUIT ? void : execName.systemSpecificFilename in occupiedIndexes.getInner(0) ? tPrint('          ',execName.relativeFileName,' is already running') :
   begin
     name:=execName.relativeFileName;
     userSignal:=userSignal==QUIT ? QUIT : '';
     wait:=waitForFreeCapacity;
     load:=getCpuLoadHistory(consoleWidth-length(name)-29);
     while (!peekFuture(wait) OR
-           runningGravTasks.size>=MAX_GRAV_INSTANCES) AND (userSignal=='') do begin
+           check_running_instances>=MAX_GRAV_INSTANCES) AND (userSignal=='') do begin
       tPrintD('Next:     ',name,"; CPU: ",BLOCKS[load].join,format('%3d',load.trailing),'%');
       load:=getCpuLoadHistory(consoleWidth-length(name)-29);
       sleep(0.1);
@@ -136,7 +133,4 @@ main(...)->begin
   running:=forcedRunningGravTasks;
   tPrint(running.size,' tasks are running: ',join("\n  "&sort(running)));
   tPrint('done');
-
-
-
 end;

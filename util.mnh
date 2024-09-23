@@ -9,5 +9,3 @@ memoized gravExes->allFiles('.','grav*.exe').map(::expandedFileName).map(::syste
 
 @MaxAge=1
 memoized forcedRunningGravTasks->getTaskInfo.map((i)->gravExes[!pos(gravExes,i['commandLine']).isInfinite][0]).toSet;
-
-

@@ -3,7 +3,6 @@ QUIT:='quit';
 
 datastore occupiedIndexes:=[].toMap;
 
-
 @MaxAge=10
 memoized gravExes->allFiles('.','grav*.exe').map(::expandedFileName).map(::systemSpecificFilename);
 

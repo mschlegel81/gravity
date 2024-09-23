@@ -20,19 +20,26 @@ exeIsMissing(name:String)->
       ? false
       : true;
 
+targetExeName(configFilePath:String,targetPathPart,targetExe)->begin
+  path:=configFilePath.extractFileDirectory;
+  parent:=path.extractFileDirectory;
+  path_prefix:=path.extractFileName.split('_').head;
+  expandedFileName(f'{parent}/{path_prefix}{targetPathPart}/{targetExe}');
+end;
+
 //*Returns a list of entries: [customization file, build flag, build output, target location]
 memoized buildableExe->
-  allFiles('','customization.pas')
-  .filter((e)->e.extractFileDirectory not in ['.','.\backup','./backup'])
+  allFiles(myPath.extractFileDirectory,'customization.pas')
+  .filter((e)->e.extractFileDirectory not in myPath.extractFileDirectory&['','\backup','/backup'])
   .cross(MODES,['_high_density/','_low_density/','_ultra_density/'])
   .map(::flatten)
   .map((customizationFile,buildMode,targetExe,targetPathPart)->
-       [customizationFile,buildMode,targetExe,expandedFileName(split(customizationFile.extractFileDirectory,'_')[0]&targetPathPart&targetExe)]);
+       [customizationFile,buildMode,targetExe,targetExeName(customizationFile,targetPathPart,targetExe)]);
 
 executeBuild(customizationFile,buildMode,targetExe,copyTargets)->begin
   print('Building ',customizationFile,' with mode ',buildMode);
   copyFile(customizationFile,'customization.pas').assert;
-  buildOut:=exec(LAZ_BUILD,[LPI,buildMode]);
+  buildOut:=exec(LAZ_BUILD,[LPI,'-B',buildMode]);
   buildOut[1]==0
   ? copyTargets.map((target)->begin
       printf('%s -> %s',targetExe,target);
@@ -46,14 +53,15 @@ ensureExe(path:String)->begin
   buildable:=buildableExe;
   k:=indexOf(buildable.getInner(3)=path)[0] orElse return warn('No build configuration found for ',path);
   targets:=buildable.filter((b)->b[0]==buildable[k,0] AND b[1]==buildable[k,1] AND exeIsMissing(buildable[k,3])).getInner(3);
+  buildable.filter((b)->b[0]==buildable[k,0] AND b[1]==buildable[k,1]);
   executeBuild(buildable[k,0],buildable[k,1],buildable[k,2],targets);
 end;
 
 rebuild(missingOnly:Boolean,prefix)->
   buildableExe
   .filter((customizationFile,buildMode,targetExe,targetPath)->targetPath.matches(prefix) AND (!missingOnly OR exeIsMissing(targetPath)))
-  .group(0)
-  .map((key,value)-> value.getInner(3).group(value.map((customizationFile,buildMode,targetExe,targetPath)->[customizationFile,buildMode,targetExe])))
+  .group(0) //group by customizationFile
+  .map((key,value)-> value.getInner(3).group(value.map((customizationFile,buildMode,targetExe,targetPath)->[customizationFile,buildMode,targetExe]))) //group by build: [customizationFile,buildMode,targetExe]
   .agg(|)
   .map((key,value)->key|[value])
   .sort

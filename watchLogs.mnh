@@ -57,7 +57,8 @@ main->begin
     anyChanged:=false;
     scriptTime>=nextScanForNewTasks
     ? begin
-        currentRunning:=forcedRunningGravTasks.sort((exeName)->occupiedIndexes[exeName] orElse Inf).filter((e)->e.changeFileExt('.log').fileExists);
+        currentRunning:=forcedRunningGravTasks;
+        currentRunning:=occupiedIndexes.sort(1).getInner(0).filter((e)->e in currentRunning and e.changeFileExt('.log').fileExists);// forcedRunningGravTasks.sort((exeName)->occupiedIndexes[exeName] orElse Inf).filter((e)->e.changeFileExt('.log').fileExists);
         currentRunning.map((e)->e.relativeFileName.changeFileExt('')).sort == logs.getInner(0).sort
         ? void
         : begin

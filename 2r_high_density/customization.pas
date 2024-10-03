@@ -6,7 +6,7 @@ CONST
   dt                    =0.05;
   GRID_SIZE             =1;
 
-  REPULSION_LINEAR   =4;
+  REPULSION_LINEAR   =2;
 
   ANNIHILATION_THRESHOLD=0;
   DIFFUSION_BY_VELOCITY =0;
@@ -29,10 +29,8 @@ FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR d:double;
   begin
-    d:=rx*rx+ry*ry;
-    if d<1
-    then exit(zeroVec)
-    else d:=2/sqr(d);
+    d:=sqrt(rx*rx+ry*ry);
+    d:=(1-exp(-d*d*d))/sqr(sqr(d));
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;

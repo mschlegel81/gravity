@@ -6,7 +6,7 @@ CONST
   dt                    =0.05;
   GRID_SIZE             =1;
 
-  REPULSION_LINEAR   =5;
+  REPULSION_LINEAR   =6.5;
 
   DIFFUSION_BY_VELOCITY =0;
   DIFFUSION_BASE        =0;
@@ -30,7 +30,7 @@ FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR d:double;
   begin
     d:=sqrt(rx*rx+ry*ry);
-    d:=1/(1E-10+d*sqr(d));
+    d:=1/(d*sqr(d));
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;

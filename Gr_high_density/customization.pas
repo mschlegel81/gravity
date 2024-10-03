@@ -25,31 +25,24 @@ VAR freq0  ,freq1  :double;
     weight0,weight1:double;
 
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
-  CONST transitIndex  :array[0..10] of longint=(   -201-50, 500-50,
-                                                   1000-50,1500-50,
-                                                   2000-50,2500-50,
-                                                   3000-50,3500-50,
-                                                   4000-50,4500-50,
-                                                   5000);
-        relativeFreq:array[-1..9] of double=(64,32,32,16,16,8,8,4,4,2,2);
+  CONST relativeFreq:array[0..19] of double=(32,32,16,16,8,8,4,4,2,2,2,4,4,8,8,16,16,32,32,64);
   VAR k:longint;
-      p:double;
+      active:longint;
   begin
     k:=0;
-    while timeStepIndex>=transitIndex[k+1] do inc(k);
-    if timeStepIndex-transitIndex[k]<=100 then begin
-      result:=true;
-      p:=0.5-0.5*cos(pi/100*(timeStepIndex-transitIndex[k]));
-    end else begin
-      result:=false;
-      p:=1;
-    end;
+    k:=timeStepIndex div 250;
+    active:=timeStepIndex-k*250;
+    result:=(active<=25);
     if odd(k) then begin
-      weight1:=  p; freq1:=relativeFreq[k  ]/SYS_SIZE;
-      weight0:=1-p; freq0:=relativeFreq[k-1]/SYS_SIZE;
+      weight1:=1; freq1:=relativeFreq[k  ]/SYS_SIZE;
+      weight0:=0; freq0:=relativeFreq[k-1]/SYS_SIZE;
     end else begin
-      weight0:=  p; freq0:=relativeFreq[k  ]/SYS_SIZE;
-      weight1:=1-p; freq1:=relativeFreq[k-1]/SYS_SIZE;
+      weight0:=1; freq0:=relativeFreq[k  ]/SYS_SIZE;
+      weight1:=0; freq1:=relativeFreq[k-1]/SYS_SIZE;
+    end;
+    if active<25 then begin
+      weight0*=active/25;
+      weight1*=active/25;
     end;
   end;
 

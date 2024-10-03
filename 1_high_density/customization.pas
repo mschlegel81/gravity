@@ -6,7 +6,7 @@ CONST
   dt                    =0.05;
   GRID_SIZE             =1;
 
-  REPULSION_LINEAR   =1.1*1;
+  REPULSION_LINEAR   =1.5;
 
   ANNIHILATION_THRESHOLD=1E10;
   ANNIHILATION_FACTOR   =0;

@@ -12,7 +12,7 @@ check_running_instances->begin
   occupiedIndexes.size;
 end;
 
-synchronized execute(execName:String,replay:Boolean)->begin
+synchronized execute(execName:String,replay:Boolean,close:Boolean)->begin
   nextPP:=0;
 save;
   if nextPP in occupiedIndexes.getInner(1) then begin
@@ -37,6 +37,7 @@ save;
   execAsync(execName.systemSpecificFilename,[execName.matches('low_density') ? 'ld' :
                                              execName.matches('high_density') ? 'hd' : void,
                                              replay ? 'replay' : void,
+                                             close  ? 'close'  : void,
                                                                  positionParameter].{$L==[] ? void : $L});
 end;
 
@@ -63,7 +64,17 @@ end;
 SKIP:='skip';
 FORCE:='force';
 
-exeSorting(L:StringCollection)->L.map((n)->n.extractFileNameOnly.clean(['0'..'9'],'').softCast=>n).sort(1).sort(0).getInner(1);
+DENS_PRIO:=['ultra'=>0,
+            'high'=>1,
+            'low'=>2].toMap;
+
+sortKey(exe:String)->begin
+  [exe.extractFileNameOnly.clean(['0'..'9'],'').softCast,
+   (dir:=exe.extractFileDirectory.extractFileNameOnly.split('_'))[0],
+   DENS_PRIO[dir[1] orElse ''] orElse 3];
+end;
+
+exeSorting(L:StringCollection)->L.sort((e)->sortKey(e));
 
 //*List executables
 main('list')->begin
@@ -91,16 +102,19 @@ main(...)->begin
   assertUniqueInstance;
   hasReplayFlag:=false;
   hasBuildFlag:=false;
+  hasCloseFlag:=false;
   matchPattern:='.*';
 
   (...).each(arg,
     arg=='replay' ? hasReplayFlag:=true :
     arg=='build' ? hasBuildFlag:=true :
+    arg=='close' ? hasCloseFlag:=true :
     matchPattern:=arg);
 
   log('hasReplayFlag=',hasReplayFlag);
-  log('hasBuildFlag=',hasBuildFlag);
-  log('matchPatterh=',matchPattern.escape);
+  log('hasBuildFlag =',hasBuildFlag);
+  log('hasCloseFlag =',hasCloseFlag);
+  log('matchPatterh =',matchPattern.escape);
 
   consoleWidth:=exec('cmd',['/C','mode','con'])[0].filter((line)->line.matches(': *\d+$')).head(2).trailing.split(':')[1].trim.softCast-1;
   firstQuestion:=true;
@@ -112,35 +126,38 @@ main(...)->begin
 
   startedCount:=0;
 
-  (hasBuildFlag
+  toStart:=(hasBuildFlag
    ? buildableExe.getInner(3)
    : gravExes)
   .filter((exe)->exe.matches(matchPattern))
-  .filter((exe)->hasBuildFlag AND exeIsMissing(exe) OR fileExists(exe))
-  .exeSorting
-  .each(execName,userSignal==QUIT ? void : execName.systemSpecificFilename in occupiedIndexes.getInner(0) ? tPrint('          ',execName.relativeFileName,' is already running') :
-  begin
-    name:=execName.relativeFileName;
-    userSignal:=userSignal==QUIT ? QUIT : '';
-    wait:=waitForFreeCapacity;
-    load:=getCpuLoadHistory(consoleWidth-length(name)-29);
-    while (!peekFuture(wait) OR
-           check_running_instances>=MAX_GRAV_INSTANCES) AND (userSignal=='') do begin
-      tPrintD('Next:     ',name,"; CPU: ",BLOCKS[load].join,format('%3d',load.trailing),'%');
+  .filter((exe)->hasBuildFlag AND (exeIsMissing(exe) OR hasReplayFlag) OR fileExists(exe))
+  .exeSorting;
+
+  for execName in toStart do
+    if userSignal==QUIT then void else
+    if execName.systemSpecificFilename in occupiedIndexes.getInner(0) then tPrint('          ',execName.relativeFileName,' is already running')
+    else begin
+      name:=execName.relativeFileName;
+      userSignal:=userSignal==QUIT ? QUIT : '';
+      wait:=waitForFreeCapacity;
       load:=getCpuLoadHistory(consoleWidth-length(name)-29);
-      sleep(0.1);
-    end;
-    userSignal in [SKIP,QUIT]
-    ? tPrint('Skipping: ',name)
-    : begin
-        userSignal==FORCE
-        ? tPrint('Forced:   ',name)
-        : tPrint('Starting: ',name);
-        hasBuildFlag ? ensureExe(expandedFileName(execName)) : void;
-        execute(execName,hasReplayFlag);
-        startedCount+=1;
+      if hasBuildFlag then ensureExe(expandedFileName(execName),hasReplayFlag);
+      while (!peekFuture(wait) OR
+             check_running_instances>=MAX_GRAV_INSTANCES) AND (userSignal=='') do begin
+        tPrintD('Next:     ',name,"; CPU: ",BLOCKS[load].join,format('%3d',load.trailing),'%');
+        load:=getCpuLoadHistory(consoleWidth-length(name)-29);
+        sleep(0.1);
       end;
-  end);
+      userSignal in [SKIP,QUIT]
+      ? tPrint('Skipping: ',name)
+      : begin
+          userSignal==FORCE
+          ? tPrint('Forced:   ',name)
+          : tPrint('Starting: ',name);
+          execute(execName,hasReplayFlag,hasCloseFlag);
+          startedCount+=1;
+        end;
+    end;
   tPrint(startedCount,' tasks started');
   running:=forcedRunningGravTasks;
   tPrint(running.size,' tasks are running: ',join("\n  "&sort(running)));

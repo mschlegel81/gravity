@@ -1,10 +1,5 @@
 USE util;
 
-census->begin
-  info:=allFiles('.').fileInfo;
-  [info.size,info.getInner('size').agg(+)];
-end;
-
 exeMayBeDeleted(name:String)->
   name.changeFileExt('.dump').fileExists
   ? false
@@ -25,9 +20,13 @@ getListingToDelete(includeExe:Boolean)->begin
 end.sort;
 
 cleanup(includeExe:Boolean)->begin
-  oldCensus:=census;
-  getListingToDelete(includeExe).agg((f)->log('Deleting ',f,deleteFile(f) ? ' o.k.' : ' FAILED'));
-  freed:=oldCensus-census;
+  freed:=
+  getListingToDelete(includeExe).map((f)->begin
+    fileSize:=fileInfo(f)['size'];
+    deleted:=deleteFile(f);
+    log('Deleting ',f,deleted ? ' o.k.' : ' FAILED');
+    deleted ? [1,fileSize] : [0,0];
+  end).agg(+) orElse [0,0];
   log( floor(freed[1]      ),"\tbytes in ",freed[0],' files freed',
   "\n",floor(freed[1]/1024 ),"\tkiB",
   "\n",floor(freed[1]/1024²),"\tMiB",

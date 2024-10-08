@@ -53,7 +53,7 @@ synchronized ensureExe(path:String, forceBuild:Boolean)->begin
   fileExists(path) ? return void :
   buildable:=buildableExe;
   k:=indexOf(buildable.getInner(3)=path)[0] orElse return warn('No build configuration found for ',path);
-  targets:=buildable.filter((b)->b[0]==buildable[k,0] AND b[1]==buildable[k,1] AND forceBuild OR exeIsMissing(buildable[k,3])).getInner(3);
+  targets:=buildable.filter((b)->b[0]==buildable[k,0] AND b[1]==buildable[k,1] AND (forceBuild OR exeIsMissing(buildable[k,3]))).getInner(3);
   buildable.filter((b)->b[0]==buildable[k,0] AND b[1]==buildable[k,1]);
   executeBuild(buildable[k,0],buildable[k,1],buildable[k,2],targets);
 end;

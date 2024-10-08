@@ -251,10 +251,10 @@ PROCEDURE TGravMainForm.FormCloseQuery(Sender: TObject; VAR CanClose: boolean);
 PROCEDURE TGravMainForm.IdleTimer1Timer(Sender: TObject);
   VAR framesCached:longint;
   begin
-    if replaying then begin
+    framesCached:=queue.getFrameCount;
+    if framesCached=0 then sleep(100) else if replaying then begin
       queue.render(Image1,extension,ClientHeight/ClientWidth);
       framesCached:=queue.dropFrame;
-      if (framesCached=0) then replaying:=false;
     end else framesCached:=queue.getFrameCount;
     caption:=appTitle+' @'+intToStr(calcFrameCount-framesCached)
     +BoolToStr(threadRunning,' ('+intToStr(framesCached)+' frames ahead)',' (done)')

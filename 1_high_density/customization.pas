@@ -39,9 +39,9 @@ FUNCTION getInitialState: T_systemState;
       massFactor:double;
   begin
     case initialDensityVariant of
-      id_low:  massFactor:= 0.1;
+      id_low:  massFactor:= 0.5;
       id_high: massFactor:= 1;
-      else     massFactor:= 10;
+      else     massFactor:= 2;
     end;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with result[i,j] do begin
       mass:=massFactor+0.001*random;

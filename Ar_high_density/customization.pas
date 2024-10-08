@@ -54,7 +54,7 @@ FUNCTION getInitialState: T_systemState;
       else     begin REGROWTH_FACTOR:=1   ; ANNIHILATION_FACTOR:=0.01;   end;
     end;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with result[i,j] do begin
-      mass:=1+0.001*random;
+      mass:=10+0.001*random;
       p:=zeroVec;
     end;
   end;

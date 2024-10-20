@@ -8,7 +8,7 @@ TYPE
   T_cellSystem=object(T_serializable)
     private
       value:T_systemState;
-      prevAccelTime:double;
+      prevAccelTime,lastStepReccomendation:double;
       lastTick:qword;
     public
       numberOfFrames:longint;
@@ -86,6 +86,7 @@ CONSTRUCTOR T_cellSystem.create;
       da:=zeroVec;
       a :=zeroVec;
     end;
+    lastStepReccomendation:=1E-3*dt;
     prevAccelTime:=-1E-3*dt;
     attractionInitialized:=false;
     lastTick:=GetTickCount64;
@@ -98,7 +99,6 @@ DESTRUCTOR T_cellSystem.destroy;
 FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
   VAR newState:T_systemState;
       staggeredAcceleration:T_vectorField;
-      minCapFactor:double=1;
 
   CONST MAX_TRANSPORT_RANGE=GRID_SIZE;
   VAR dtRest:double;
@@ -113,18 +113,19 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
         totalMass:double=0;
         speed:double;
     begin
-      result:=(simTime-prevAccelTime)*1.5;
+      result:=lastStepReccomendation*1.1;
       totalDrift:=zeroVec;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do if value[i,j].mass>UPPER_C1_LEVEL then begin
-        ti:=(i+mask) and mask;
-        tj:=(j+mask) and mask;
+        ti:=(i+1) and mask;
+        tj:=(j+1) and mask;
+
         f:=1/(value[i,j].mass+value[ti,j].mass);
-        speed:=abs((value[i,j].p[0]-value[i,j].dp[0]+value[ti,j].p[0]+value[ti,j].dp[0])*f);                                 if speed>maxSpeed then maxSpeed:=speed;
-        jerk :=abs((value[i,j].a[0]-value[i,j].da[0]+value[ti,j].a[0]+value[ti,j].da[0])*f-staggeredAcceleration[mask,j,0]); if jerk>maxJerk then maxJerk:=jerk;
+        speed:=abs((value[i,j].p[0]-value[i,j].dp[0]+value[ti,j].p[0]+value[ti,j].dp[0])*f);                              if speed>maxSpeed then maxSpeed:=speed;
+        jerk :=abs((value[i,j].a[0]-value[i,j].da[0]+value[ti,j].a[0]+value[ti,j].da[0])*f-staggeredAcceleration[i,j,0]); if jerk>maxJerk then maxJerk:=jerk;
 
         f:=1/(value[i,j].mass+value[i,tj].mass);
-        speed+=abs((value[i,j].p[1]-value[i,j].dp[1]+value[i,tj].p[1]+value[i,tj].dp[1])*f);                                 if speed>maxSpeed then maxSpeed:=speed;
-        jerk :=abs((value[i,j].a[1]-value[i,j].da[1]+value[i,tj].a[1]+value[i,tj].da[1])*f-staggeredAcceleration[i,mask,1]); if jerk>maxJerk then maxJerk:=jerk;
+        speed:=abs((value[i,j].p[1]-value[i,j].dp[1]+value[i,tj].p[1]+value[i,tj].dp[1])*f);                              if speed>maxSpeed then maxSpeed:=speed;
+        jerk :=abs((value[i,j].a[1]-value[i,j].da[1]+value[i,tj].a[1]+value[i,tj].da[1])*f-staggeredAcceleration[i,j,1]); if jerk>maxJerk then maxJerk:=jerk;
 
         totalMass +=value[i,j].mass;
         totalDrift+=value[i,j].p;
@@ -133,13 +134,12 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
       if f<result then result:=f;
 
       maxJerk:=maxJerk/(simTime-prevAccelTime);
-      f:=sqrt(2/maxJerk);
-      if f<result then result:=f;
-
-      f:=power(1E-2/maxJerk,1/3);
+      f:=sqrt(7/maxJerk);
       if f<result then result:=f;
 
       totalDrift*=0.3/totalMass;
+
+      lastStepReccomendation:=result;
 
       if result>dtRest
       then result:=dtRest
@@ -273,10 +273,10 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
               mass+=density*wxy;
               p   +=new_p  *wxy;
               a   +=new_a  *wxy;
-              dp[0]+=0.499*vx1*wxy*wx;
-              dp[1]+=0.499*vy1*wxy*wy;
-              da[0]+=0.499*ax1*wxy*wx;
-              da[1]+=0.499*ay1*wxy*wy;
+              dp[0]+=0.5*vx1*wxy*wx;
+              dp[1]+=0.5*vy1*wxy*wy;
+              da[0]+=0.5*ax1*wxy*wx;
+              da[1]+=0.5*ay1*wxy*wy;
             end;
           end;
         end;
@@ -330,7 +330,7 @@ FUNCTION T_cellSystem.getPicture: P_rgbPicture;
 
 FUNCTION T_cellSystem.getSerialVersion: dword;
   begin
-    result:=31360+SYS_SIZE;
+    result:=12+SYS_SIZE;
   end;
 
 FUNCTION T_cellSystem.loadFromStream(VAR stream: T_bufferedInputStreamWrapper): boolean;
@@ -339,6 +339,7 @@ FUNCTION T_cellSystem.loadFromStream(VAR stream: T_bufferedInputStreamWrapper): 
     stream.read(value,sizeOf(value));
     numberOfFrames:=stream.readWord;
     prevAccelTime:=stream.readDouble;
+    lastStepReccomendation:=stream.readDouble;
     result:=stream.allOkay;
   end;
 
@@ -348,6 +349,7 @@ PROCEDURE T_cellSystem.saveToStream(VAR stream: T_bufferedOutputStreamWrapper);
     stream.write(value,sizeOf(value));
     stream.writeWord(numberOfFrames);
     stream.writeDouble(prevAccelTime);
+    stream.writeDouble(lastStepReccomendation);
   end;
 
 end.

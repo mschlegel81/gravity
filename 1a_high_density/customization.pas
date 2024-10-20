@@ -2,7 +2,7 @@ UNIT customization;
 INTERFACE
 USES vectors,commandLineHandling;
 CONST
-  SYMMETRIC_CONTINUATION=20;
+  SYMMETRIC_CONTINUATION=40;
   dt                    =0.05;
   GRID_SIZE             =1;
 

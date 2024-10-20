@@ -6,14 +6,14 @@ CONST
   dt                    =0.05;
   GRID_SIZE             =1;
 
-  REPULSION_LINEAR   =1.5;
+  REPULSION_LINEAR   =3;
 
-  ANNIHILATION_THRESHOLD=0;
-  DIFFUSION_BY_VELOCITY =0;
-  DIFFUSION_BASE        =0;
-VAR
-  REGROWTH_FACTOR    :double = 0;
-  ANNIHILATION_FACTOR:double = 0.01;
+  ANNIHILATION_THRESHOLD=1E10;
+  ANNIHILATION_FACTOR   =0;
+
+  REGROWTH_FACTOR=0;
+  DIFFUSION_BY_VELOCITY=0;
+  DIFFUSION_BASE       =0;
 
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
@@ -29,21 +29,23 @@ FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR d:double;
   begin
-    d:=0.5/(rx*rx+ry*ry);
+    d:=sqrt(rx*rx+ry*ry);
+    d:=(1-exp(-d*d))/(d*sqr(d));
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;
 
 FUNCTION getInitialState: T_systemState;
   VAR i,j:longint;
+      massFactor:double;
   begin
     case initialDensityVariant of
-      id_low:  begin REGROWTH_FACTOR:=0.01; ANNIHILATION_FACTOR:=0.0001; end;
-      id_high: begin REGROWTH_FACTOR:=0.1 ; ANNIHILATION_FACTOR:=0.001;  end;
-      else     begin REGROWTH_FACTOR:=1   ; ANNIHILATION_FACTOR:=0.01;   end;
+      id_low:  massFactor:= 0.5;
+      id_high: massFactor:= 1;
+      else     massFactor:= 2;
     end;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with result[i,j] do begin
-      mass:=10+0.001*random;
+      mass:=massFactor+0.001*random;
       p:=zeroVec;
     end;
   end;

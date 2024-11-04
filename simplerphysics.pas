@@ -140,16 +140,13 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
       result:=lastStepReccomendation*1.1;
       totalDrift:=zeroVec;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do if value[i,j].mass>UPPER_C1_LEVEL then begin
-        ti:=(i+1) and mask;
-        tj:=(j+1) and mask;
+        f:=1/(value[i,j].mass);
+        speed:=abs((value[i,j].p[0]-value[i,j].dp[0])*f);                              if speed>maxSpeed then maxSpeed:=speed;
+        jerk :=abs((value[i,j].a[0]-value[i,j].da[0])*f-staggeredAcceleration[i,j,0]); if jerk>maxJerk then maxJerk:=jerk;
 
-        f:=1/(value[i,j].mass+value[ti,j].mass);
-        speed:=abs((value[i,j].p[0]-value[i,j].dp[0]+value[ti,j].p[0]+value[ti,j].dp[0])*f);                              if speed>maxSpeed then maxSpeed:=speed;
-        jerk :=abs((value[i,j].a[0]-value[i,j].da[0]+value[ti,j].a[0]+value[ti,j].da[0])*f-staggeredAcceleration[i,j,0]); if jerk>maxJerk then maxJerk:=jerk;
-
-        f:=1/(value[i,j].mass+value[i,tj].mass);
-        speed:=abs((value[i,j].p[1]-value[i,j].dp[1]+value[i,tj].p[1]+value[i,tj].dp[1])*f);                              if speed>maxSpeed then maxSpeed:=speed;
-        jerk :=abs((value[i,j].a[1]-value[i,j].da[1]+value[i,tj].a[1]+value[i,tj].da[1])*f-staggeredAcceleration[i,j,1]); if jerk>maxJerk then maxJerk:=jerk;
+        f:=1/(value[i,j].mass);
+        speed:=abs((value[i,j].p[1]-value[i,j].dp[1])*f);                              if speed>maxSpeed then maxSpeed:=speed;
+        jerk :=abs((value[i,j].a[1]-value[i,j].da[1])*f-staggeredAcceleration[i,j,1]); if jerk>maxJerk then maxJerk:=jerk;
 
         totalMass +=value[i,j].mass;
         totalDrift+=value[i,j].p;

@@ -25,15 +25,15 @@ VAR strength:double=0;
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
   begin
     result:=timeStepIndex mod 500=0;
-    if odd(timeStepIndex div 500) then strength:=0 else strength:=0.01;
+    if odd(timeStepIndex div 500) then strength:=0 else strength:=0.01*sqr(64/SYS_SIZE);
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR d:double;
   begin
     d:=sqrt(rx*rx+ry*ry);
-	if d>32 then exit(zeroVec);
-	d:=-strength*sin(2*pi*d/32);
+	if d>SYS_SIZE/2 then exit(zeroVec);
+	d:=-strength*sin(4*pi*d/SYS_SIZE);
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;

@@ -167,7 +167,7 @@ FUNCTION calcThread(p:pointer):ptrint;
         if not(hasReplayFlag) and (not(compressedReplayExists) or not(sys.loadFromFile(fileName_dump)) or (sys.numberOfFrames<>calcFrameCount)) then begin
           log.append('ERROR ON RESTORE! RESTARTING CALCULATION.').appendLineBreak;
           calcFrameCount:=0;
-          compressedAnimStream.Destroy;
+          compressedAnimStream.destroy;
           DeleteFile(fileName_replay);
           compressedAnimStream:=TFileStream.create(fileName_replay,fmCreate        or fmShareDenyWrite);
           compressedAnimStream.Seek(0,soBeginning);

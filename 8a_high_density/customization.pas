@@ -6,14 +6,13 @@ CONST
   dt                    =0.05;
   GRID_SIZE             =1;
 
-  REPULSION_LINEAR   =1;
-
   DIFFUSION_BY_VELOCITY =0;
   DIFFUSION_BASE        =0;
   REGROWTH_FACTOR       =0;
   ANNIHILATION_FACTOR   =0.001;
 VAR
   ANNIHILATION_THRESHOLD:double=0;
+  REPULSION_LINEAR:double=1;
 
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex:longint):boolean;
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
@@ -22,13 +21,12 @@ PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel:T_vect
 IMPLEMENTATION
 USES math;
 VAR range:double=0;
-    lastRange:double=1000;
-
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
   begin
-    range:=16*(0.5-0.5*cos(timeStepIndex*2*pi/5000));
-    result:=odd(timeStepIndex);
-    if result then lastRange:=range;
+    range:=8*(0.5-0.5*cos(timeStepIndex*2*pi/5000));
+    REPULSION_LINEAR:=2*straightAttraction(0.5,0)[0];
+    if REPULSION_LINEAR<0 then REPULSION_LINEAR:=0;   
+    result:=true;    
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
@@ -36,7 +34,8 @@ FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   begin
     d:=sqrt(rx*rx+ry*ry);
 	if d>SYS_SIZE/2 then exit(zeroVec);
-	d:=sin(range*(0.5-d/SYS_SIZE)*pi)*(0.5+0.5*cos(2*pi*d/SYS_SIZE))/d*32/SYS_SIZE;
+	d:=sin(range*(0.5-2*d/SYS_SIZE)*pi)*
+          (0.5+0.5*cos(4*pi*d/SYS_SIZE))/d*sqr(32/SYS_SIZE);    
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;
@@ -46,11 +45,11 @@ FUNCTION getInitialState: T_systemState;
   begin
     case initialDensityVariant of
       id_low:  ANNIHILATION_THRESHOLD:=1;
-      id_high: ANNIHILATION_THRESHOLD:=2;
-      else     ANNIHILATION_THRESHOLD:=4;
+      id_high: ANNIHILATION_THRESHOLD:=3;
+      else     ANNIHILATION_THRESHOLD:=9;
     end;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with result[i,j] do begin
-      mass:=1+0.001*random;
+      mass:=10+0.001*random;
       p:=zeroVec;
     end;
   end;
@@ -60,4 +59,3 @@ PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel: T_vec
   end;
 
 end.
-

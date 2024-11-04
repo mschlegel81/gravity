@@ -2,7 +2,7 @@ UNIT customization;
 INTERFACE
 USES vectors,commandLineHandling;
 CONST
-  SYMMETRIC_CONTINUATION=0;
+  SYMMETRIC_CONTINUATION=-1;
   dt                    =0.05;
   GRID_SIZE             =1;
 
@@ -56,7 +56,7 @@ FUNCTION getInitialState: T_systemState;
     result[i+1,i-1].mass:=massFactor*0.5454060388524101;
     result[i+1,i  ].mass:=massFactor*0.971740163533408;
     result[i+1,i+1].mass:=massFactor*0.5454060388524101;
-    
+
   end;
 
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel: T_vectorField);

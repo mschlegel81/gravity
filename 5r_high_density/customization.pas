@@ -25,15 +25,15 @@ VAR strength:double=0;
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
   begin
     result:=timeStepIndex mod 500=0;
-    if odd(timeStepIndex div 500) then strength:=0 else strength:=0.01;
+    if odd(timeStepIndex div 500) then strength:=0 else strength:=0.01*sqr(64/SYS_SIZE);
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR d:double;
   begin
     d:=sqrt(rx*rx+ry*ry);
-	if d>32 then exit(zeroVec);
-	d:=-strength*sin(2*pi*d/32);
+	if d>SYS_SIZE/2 then exit(zeroVec);
+	d:=-strength*sin(4*pi*d/SYS_SIZE);
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;
@@ -42,12 +42,12 @@ FUNCTION getInitialState: T_systemState;
   VAR i,j:longint;
   begin
     case initialDensityVariant of
-      id_low:  begin REGROWTH_FACTOR:=0.01; ANNIHILATION_FACTOR:=0.0001; end;
-      id_high: begin REGROWTH_FACTOR:=0.1 ; ANNIHILATION_FACTOR:=0.001;  end;
-      else     begin REGROWTH_FACTOR:=1   ; ANNIHILATION_FACTOR:=0.01;   end;
+      id_low:  begin REGROWTH_FACTOR:=0.05; ANNIHILATION_FACTOR:=0.05; end;
+      id_high: begin REGROWTH_FACTOR:=0.1 ; ANNIHILATION_FACTOR:=0.1;  end;
+      else     begin REGROWTH_FACTOR:=0.2;  ANNIHILATION_FACTOR:=0.2;    end;
     end;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with result[i,j] do begin
-      mass:=10+0.001*random;
+      mass:=2*random;
       p:=zeroVec;
     end;
   end;
@@ -55,6 +55,5 @@ FUNCTION getInitialState: T_systemState;
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel: T_vectorField);
   begin
   end;
-
 end.
 

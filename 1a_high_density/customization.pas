@@ -2,16 +2,16 @@ UNIT customization;
 INTERFACE
 USES vectors,commandLineHandling;
 CONST
-  SYMMETRIC_CONTINUATION=40;
+  SYMMETRIC_CONTINUATION=20;
   dt                    =0.05;
   GRID_SIZE             =1;
 
-  REPULSION_LINEAR   =1.5;
+  REPULSION_LINEAR   =1.2;
 
   DIFFUSION_BY_VELOCITY =0;
   DIFFUSION_BASE        =0;
   REGROWTH_FACTOR       =0;
-  ANNIHILATION_FACTOR   =0.001;
+  ANNIHILATION_FACTOR   =0.03;
 VAR
   ANNIHILATION_THRESHOLD:double=0;
 
@@ -39,11 +39,11 @@ FUNCTION getInitialState: T_systemState;
   begin
     case initialDensityVariant of
       id_low:  ANNIHILATION_THRESHOLD:=1;
-      id_high: ANNIHILATION_THRESHOLD:=2;
-      else     ANNIHILATION_THRESHOLD:=4;
+      id_high: ANNIHILATION_THRESHOLD:=3;
+      else     ANNIHILATION_THRESHOLD:=9;
     end;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with result[i,j] do begin
-      mass:=1+0.001*random;
+      mass:=10+0.001*random;
       p:=zeroVec;
     end;
   end;
@@ -53,4 +53,3 @@ PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel: T_vec
   end;
 
 end.
-

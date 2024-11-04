@@ -2,7 +2,7 @@ UNIT customization;
 INTERFACE
 USES vectors,commandLineHandling;
 CONST
-  SYMMETRIC_CONTINUATION=3;
+  SYMMETRIC_CONTINUATION=1;
   dt                    =0.05;
   GRID_SIZE             =1;
 
@@ -21,17 +21,19 @@ FUNCTION getInitialState:T_systemState;
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel:T_vectorField);
 IMPLEMENTATION
 VAR max_range:double;
+    last_max_range:double=-1E3;
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
   begin
-    max_range:=(0.7*timeStepIndex/1000)*SYS_SIZE;
-    result:=(timeStepIndex and 7)=0;
+    max_range:=SYS_SIZE*sin(timeStepIndex*pi/5000);
+    result:=abs(max_range-last_max_range)>0.5;
+    if result then last_max_range:=max_range;
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR d:double;
   begin
-    d:=sqrt(rx*rx+ry*ry);
-    if d>max_range then exit(zeroVec) else d:=0.01*(0.5+0.5*cos(pi*d/max_range))/d;
+    d:=rx*rx+ry*ry;
+    if d>sqr(max_range) then exit(zeroVec) else d:=0.01/sqrt(d);
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;
@@ -40,12 +42,12 @@ FUNCTION getInitialState: T_systemState;
   VAR i,j:longint;
   begin
     case initialDensityVariant of
-      id_low:  begin REGROWTH_FACTOR:=0.01; ANNIHILATION_FACTOR:=0.0001; end;
-      id_high: begin REGROWTH_FACTOR:=0.1 ; ANNIHILATION_FACTOR:=0.001;  end;
-      else     begin REGROWTH_FACTOR:=1   ; ANNIHILATION_FACTOR:=0.01;   end;
+      id_low:  begin REGROWTH_FACTOR:=0.05; ANNIHILATION_FACTOR:=0.05; end;
+      id_high: begin REGROWTH_FACTOR:=0.1 ; ANNIHILATION_FACTOR:=0.1;  end;
+      else     begin REGROWTH_FACTOR:=0.2;  ANNIHILATION_FACTOR:=0.2;    end;
     end;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with result[i,j] do begin
-      mass:=10+0.001*random;
+      mass:=2*random;
       p:=zeroVec;
     end;
   end;
@@ -53,6 +55,5 @@ FUNCTION getInitialState: T_systemState;
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel: T_vectorField);
   begin
   end;
-
 end.
 

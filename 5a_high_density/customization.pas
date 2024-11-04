@@ -11,7 +11,7 @@ CONST
   DIFFUSION_BY_VELOCITY =0;
   DIFFUSION_BASE        =0;
   REGROWTH_FACTOR       =0;
-  ANNIHILATION_FACTOR   =0.001;
+  ANNIHILATION_FACTOR   =0.03;
 VAR
   ANNIHILATION_THRESHOLD:double=0;
 
@@ -25,15 +25,15 @@ VAR strength:double=0;
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
   begin
     result:=timeStepIndex mod 500=0;
-    if odd(timeStepIndex div 500) then strength:=0 else strength:=0.01;
+    if odd(timeStepIndex div 500) then strength:=0 else strength:=0.01*sqr(64/SYS_SIZE);
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR d:double;
   begin
     d:=sqrt(rx*rx+ry*ry);
-	if d>32 then exit(zeroVec);
-	d:=-strength*sin(2*pi*d/32);
+	if d>SYS_SIZE/2 then exit(zeroVec);
+	d:=-strength*sin(4*pi*d/SYS_SIZE);
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;
@@ -43,11 +43,11 @@ FUNCTION getInitialState: T_systemState;
   begin
     case initialDensityVariant of
       id_low:  ANNIHILATION_THRESHOLD:=1;
-      id_high: ANNIHILATION_THRESHOLD:=2;
-      else     ANNIHILATION_THRESHOLD:=4;
+      id_high: ANNIHILATION_THRESHOLD:=3;
+      else     ANNIHILATION_THRESHOLD:=9;
     end;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with result[i,j] do begin
-      mass:=1+0.001*random;
+      mass:=10+0.001*random;
       p:=zeroVec;
     end;
   end;
@@ -57,4 +57,3 @@ PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel: T_vec
   end;
 
 end.
-

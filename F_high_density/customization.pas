@@ -23,9 +23,9 @@ IMPLEMENTATION
 VAR max_range,strength:double;
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
   begin
-    max_range:=(timeStepIndex mod 1000)/1000*SYS_SIZE*sqrt(0.5);
+    max_range:=(timeStepIndex mod 1000)/1000*SYS_SIZE*0.5;
     strength:=0.1-((timeStepIndex div 1000) and 1)*0.2;
-    result:=(timeStepIndex and 7)=0;
+    result:=(timeStepIndex and 3)=0;
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
@@ -42,9 +42,9 @@ FUNCTION getInitialState: T_systemState;
       massFactor:double;
   begin
     case initialDensityVariant of
-      id_low:  massFactor:= 0.1;
+      id_low:  massFactor:= 0.5;
       id_high: massFactor:= 1;
-      else     massFactor:= 10;
+      else     massFactor:= 2;
     end;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with result[i,j] do begin
       mass:=massFactor+0.001*random;

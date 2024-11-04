@@ -2,11 +2,11 @@ UNIT customization;
 INTERFACE
 USES vectors,commandLineHandling;
 CONST
-  SYMMETRIC_CONTINUATION=40;
+  SYMMETRIC_CONTINUATION=20;
   dt                    =0.05;
   GRID_SIZE             =1;
 
-  REPULSION_LINEAR   =1.5;
+  REPULSION_LINEAR   =1.2;
 
   ANNIHILATION_THRESHOLD=1E10;
   ANNIHILATION_FACTOR   =0;

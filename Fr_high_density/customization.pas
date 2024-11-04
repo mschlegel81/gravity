@@ -23,9 +23,9 @@ IMPLEMENTATION
 VAR max_range,strength:double;
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
   begin
-    max_range:=(timeStepIndex mod 1000)/1000*SYS_SIZE*sqrt(0.5);
+    max_range:=(timeStepIndex mod 1000)/1000*SYS_SIZE*0.5;
     strength:=0.1-((timeStepIndex div 1000) and 1)*0.2;
-    result:=(timeStepIndex and 7)=0;
+    result:=(timeStepIndex and 3)=0;
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
@@ -41,12 +41,12 @@ FUNCTION getInitialState: T_systemState;
   VAR i,j:longint;
   begin
     case initialDensityVariant of
-      id_low:  begin REGROWTH_FACTOR:=0.01; ANNIHILATION_FACTOR:=0.0001; end;
-      id_high: begin REGROWTH_FACTOR:=0.1 ; ANNIHILATION_FACTOR:=0.001;  end;
-      else     begin REGROWTH_FACTOR:=1   ; ANNIHILATION_FACTOR:=0.01;   end;
+      id_low:  begin REGROWTH_FACTOR:=0.05; ANNIHILATION_FACTOR:=0.05; end;
+      id_high: begin REGROWTH_FACTOR:=0.1 ; ANNIHILATION_FACTOR:=0.1;  end;
+      else     begin REGROWTH_FACTOR:=0.2;  ANNIHILATION_FACTOR:=0.2;    end;
     end;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with result[i,j] do begin
-      mass:=10+0.001*random;
+      mass:=2*random;
       p:=zeroVec;
     end;
   end;
@@ -54,6 +54,5 @@ FUNCTION getInitialState: T_systemState;
 PROCEDURE addBackgroundAcceleration(CONST timeStepIndex:double; VAR accel: T_vectorField);
   begin
   end;
-
 end.
 

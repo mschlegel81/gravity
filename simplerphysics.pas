@@ -207,14 +207,6 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
         ax0,ax1,ay0,ay1:double;
         jerkFactor,jerk:double;
         density:double;
-
-        row_boundary_value:array[0..SYS_SIZE-1] of record
-          x,vx,ax:double;
-        end;
-        cell_boundary_value:record
-          y,vy,ay:double;
-        end;
-
         xBorder,yBorder:byte;
     begin
       //a = d²x/dt²
@@ -231,43 +223,26 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do with newState[i,j] do begin mass:=0; p:=zeroVec; dp:=zeroVec; a:=zeroVec; da:=zeroVec; end;
       for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
         with value[i,j] do begin
-          if i=0 then begin
-            ti:=             mask; f:=1/(mass+value[ti,j].mass);    if f>1E10 then f:=0;
-            vx0:=(p[0]-dp[0]+value[ti,j].p[0]+value[ti,j].dp[0])*f;
-            ax0:=(a[0]-da[0]+value[ti,j].a[0]+value[ti,j].da[0])*f;
-            f:=staggeredAcceleration[mask,j,0]; jerk:=(f-ax0)*jerkFactor; ax0:=f; x0:=i+dtEff*(vx0+dtEff*0.5*(ax0+jerk*0.6666666666666666666666)); vx0+=dtEff*(ax0+jerk);
-          end else begin
-            x0 :=row_boundary_value[j].x;
-            vx0:=row_boundary_value[j].vx;
-            ax0:=row_boundary_value[j].ax;
-          end;
 
-          ti:=(i+1   ) and mask; f:=1/(mass+value[ti,j].mass);    if f>1E10 then f:=0;
-          vx1:=(p[0]+dp[0]+value[ti,j].p[0]-value[ti,j].dp[0])*f;
-          ax1:=(a[0]+da[0]+value[ti,j].a[0]-value[ti,j].da[0])*f;
-          f:=staggeredAcceleration[i,j,0]; jerk:=(f-ax1)*jerkFactor; ax1:=f; x1:=i+1+dtEff*(vx1+dtEff*0.5*(ax1+jerk*0.6666666666666666666666)); vx1+=dtEff*(ax1+jerk);
-          row_boundary_value[j].x:=x1;
-          row_boundary_value[j].vx:=vx1;
-          row_boundary_value[j].ax:=ax1;
+          f:=1/mass; if f>1E10 then f:=0;
+          vx0:=(p[0]-dp[0])*f;
+          ax0:=(a[0]-da[0])*f;
+          f:=staggeredAcceleration[(i+mask) and mask,j,0]; jerk:=(f-ax0)*jerkFactor; ax0:=f; x0:=i  +dtEff*(vx0+dtEff*0.5*(ax0+jerk*0.6666666666666666666666)); vx0+=dtEff*(ax0+jerk);
 
-          if j=0 then begin
-            tj:=             mask; f:=1/(mass+value[i,tj].mass);    if f>1E10 then f:=0;
-            vy0:=(p[1]-dp[1]+value[i,tj].p[1]+value[i,tj].dp[1])*f;
-            ay0:=(a[1]-da[1]+value[i,tj].a[1]+value[i,tj].da[1])*f;
-            f:=staggeredAcceleration[i,mask,1]; jerk:=(f-ay0)*jerkFactor; ay0:=f; y0:=j  +dtEff*(vy0+dtEff*0.5*(ay0+jerk*0.6666666666666666666666)); vy0+=dtEff*(ay0+jerk);
-          end else begin
-            y0 :=cell_boundary_value.y;
-            vy0:=cell_boundary_value.vy;
-            ay0:=cell_boundary_value.ay;
-          end;
+          f:=1/mass; if f>1E10 then f:=0;
+          vx1:=(p[0]+dp[0])*f;
+          ax1:=(a[0]+da[0])*f;
+          f:=staggeredAcceleration[i,j,0];                 jerk:=(f-ax1)*jerkFactor; ax1:=f; x1:=i+1+dtEff*(vx1+dtEff*0.5*(ax1+jerk*0.6666666666666666666666)); vx1+=dtEff*(ax1+jerk);
 
-          tj:=(j+1   ) and mask; f:=1/(mass+value[i,tj].mass);    if f>1E10 then f:=0;
-          vy1:=(p[1]+dp[1]+value[i,tj].p[1]-value[i,tj].dp[1])*f;
-          ay1:=(a[1]+da[1]+value[i,tj].a[1]-value[i,tj].da[1])*f;
-          f:=staggeredAcceleration[i,j,1]; jerk:=(f-ay1)*jerkFactor; ay1:=f; y1:=j+1+dtEff*(vy1+dtEff*0.5*(ay1+jerk*0.6666666666666666666666)); vy1+=dtEff*(ay1+jerk);
-          cell_boundary_value.y :=y1 ;
-          cell_boundary_value.vy:=vy1;
-          cell_boundary_value.ay:=ay1;
+          f:=1/mass; if f>1E10 then f:=0;
+          vy0:=(p[1]-dp[1])*f;
+          ay0:=(a[1]-da[1])*f;
+          f:=staggeredAcceleration[i,(j+mask) and mask,1]; jerk:=(f-ay0)*jerkFactor; ay0:=f; y0:=j  +dtEff*(vy0+dtEff*0.5*(ay0+jerk*0.6666666666666666666666)); vy0+=dtEff*(ay0+jerk);
+
+          f:=1/mass; if f>1E10 then f:=0;
+          vy1:=(p[1]+dp[1])*f;
+          ay1:=(a[1]+da[1])*f;
+          f:=staggeredAcceleration[i,j,1];                 jerk:=(f-ay1)*jerkFactor; ay1:=f; y1:=j+1+dtEff*(vy1+dtEff*0.5*(ay1+jerk*0.6666666666666666666666)); vy1+=dtEff*(ay1+jerk);
         end;
 
         if x1<x0+1 then begin x0:=(x0+x1)*0.5-0.5; x1:=x0+1; end;

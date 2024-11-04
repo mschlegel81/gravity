@@ -9,7 +9,7 @@ exeMayBeDeleted(name:String)->
 
 getListingToDelete(includeExe:Boolean)->begin
   changeDirectory(myPath.extractFileExt);
-  blocked:=forcedRunningGravTasks.map((n)->n.changeFileExt('')).relativeFileName.toSet;
+  blocked:=forcedRunningGravTasks(gravExes).getInner(0).map((n)->n.changeFileExt('')).relativeFileName.toSet;
   unblockedFilter:=(f)->f.changeFileExt('').expandedFileName.relativeFileName not in blocked;
   union(allFiles('backup','*.*'),
         allFiles('lib','*.*'),

@@ -8,6 +8,10 @@ watcher(filename:String)->{begin
     timedOut:=false;
     trail:=[];
     localAsync({begin
+      begin
+        maxSleep:=scriptTime+10;
+        while not fileExists(filename) and scriptTime<maxSleep do sleep(0.01);
+      end;
       it:=fileLineIterator(filename,60);
       n:=void;
       while !isVoid(n:=it()) do begin
@@ -44,24 +48,23 @@ main->begin
     answer=='-' ? printDirect("\rLines: ",linesTotal:=max(1,linesTotal-1),'  ') :
     answer==QUIT ? killSignal:=true : void;
   end; end});
-  logs:=forcedRunningGravTasks
-    .sort((exeName)->occupiedIndexes[exeName] orElse Inf)
-    .filter((e)->e.changeFileExt('.log').fileExists)
-    .map((e)->begin
+  logs:=getOccupied
+    .sort(1)
+    .filter((e,i)->e.changeFileExt('.log').fileExists)
+    .map((e,i)->begin
        key:=e.relativeFileName.changeFileExt('');
        [key,watcher(e.changeFileExt('.log')),['-']];
      end);
 
   sleep(1);
+  last_hash:=getOccupied.hash;
 
-  nextScanForNewTasks:=scriptTime+10;
   sleepTime:=0;
   while !killSignal do begin
     anyChanged:=false;
-    scriptTime>=nextScanForNewTasks
+    last_hash<>getOccupied.hash
     ? begin
-        currentRunning:=forcedRunningGravTasks;
-        currentRunning:=occupiedIndexes.sort(1).getInner(0).filter((e)->e in currentRunning and e.changeFileExt('.log').fileExists);// forcedRunningGravTasks.sort((exeName)->occupiedIndexes[exeName] orElse Inf).filter((e)->e.changeFileExt('.log').fileExists);
+        currentRunning:=getOccupied.sort(1).getInner(0);
         currentRunning.map((e)->e.relativeFileName.changeFileExt('')).sort == logs.getInner(0).sort
         ? void
         : begin
@@ -73,17 +76,17 @@ main->begin
                    end);
             anyChanged:=true;
           end;
-        nextScanForNewTasks:=scriptTime+10;
+        last_hash:=getOccupied.hash;
       end
     : void;
 
-    logs:=logs.each(e,
+    logs:=logs.each((key,W,T),
       begin
-        (n:=e[1](linesTotal))==e[2]
-        ? e
+        (n:=W(linesTotal))==T
+        ? [key,W,T]
         : begin
             anyChanged:=true;
-            [e[0],e[1],n];
+            [key,W,n];
           end;
       end);
 
@@ -92,7 +95,6 @@ main->begin
         out:=logs.map((l)->[l[0],l[2]==[] ? [''] : l[2]]);
         out.size==0 ? void : begin
           includeEta:=linesTotal>=3*out.size;
-
 
           lines:=out.getInner(1).map((L)->max(1+ord(includeEta),L.size)).agg(+);
 
@@ -135,6 +137,6 @@ main->begin
     : void;
     printDirect("\rCPU ",BLOCKS[getCpuLoadHistory(cpuWidth)].join,getCpuLoadHistory.orElse(['?']).trailing,'% ');
 
-    sleep(anyChanged ? sleepTime:=0.5 : sleepTime:=2-(2-sleepTime)*0.9);
+    sleep(anyChanged ? sleepTime:=1 : sleepTime:=10-(10-sleepTime)*0.9);
   end;
 end;

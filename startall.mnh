@@ -2,31 +2,25 @@ USE cpuMonitor, util, rebuild;
 
 MAX_GRAV_INSTANCES:=12;
 
-check_running_instances->begin
-  if occupiedIndexes.size>=MAX_GRAV_INSTANCES then begin
-    sleep(1);
-    running:=forcedRunningGravTasks;
-    for key in occupiedIndexes.getInner(0).minus(running) do occupiedIndexes[key]:=void;
-    writeAllDataStores;
-  end;
-  occupiedIndexes.size;
-end;
+mutable lastForce:=scriptTime;
+datastore occupiedIndexes:=[].toMap;
 
 synchronized execute(execName:String,replay:Boolean,close:Boolean)->begin
   nextPP:=0;
 save;
-  if nextPP in occupiedIndexes.getInner(1) then begin
-    check_running_instances;
-    while nextPP in occupiedIndexes.getInner(1) do nextPP:=nextPP+1;
-  end;
+  //if nextPP in occupiedIndexes.getInner(1) AND scriptTime>=lastForce+10 then begin
+  //  occupiedIndexes:=forcedRunningGravTasks;
+  //  lastForce:=scriptTime;
+  //end;
+  while nextPP in occupiedIndexes.getInner(1) do nextPP:=nextPP+1;
   if nextPP>=MAX_GRAV_INSTANCES then begin
     nextPP:=0;
     while nextPP in occupiedIndexes.getInner(1) do nextPP:=nextPP+1;
   end;
-  occupiedIndexes[execName.systemSpecificFilename]:=nextPP;
-  writeAllDataStores;
+  currPP:=nextPP;
   positionParameter:=if nextPP>=MAX_GRAV_INSTANCES then begin
                        nextPP:=0;
+                       currPP:=10000;
                        void;
                      end else begin
                        o:='pos='&nextPP;
@@ -34,11 +28,25 @@ save;
                        o;
                      end;
   positionParameter;
+  lastForce:=scriptTime;
   execAsync(execName.systemSpecificFilename,[execName.matches('low_density') ? 'ld' :
                                              execName.matches('high_density') ? 'hd' : void,
                                              replay ? 'replay' : void,
                                              close  ? 'close'  : void,
-                                                                 positionParameter].{$L==[] ? void : $L});
+                                                                 positionParameter].{$L==[] ? void : $L},-1);
+  while not fileExists(execName.changeFileExt('.log')) do sleep(0.01);
+  occupiedIndexes[execName.systemSpecificFilename]:=currPP;
+  lastForce:=scriptTime;
+end;
+
+exe_candiates:=buildableExe.getInner(3).systemSpecificFilename;
+
+synchronized checkStillRunning->begin
+  if scriptTime>lastForce+10 then begin
+    occupiedIndexes:=forcedRunningGravTasks(exe_candiates);
+    lastForce:=scriptTime;
+  end;
+  occupiedIndexes.size;
 end;
 
 
@@ -94,12 +102,8 @@ main('-h')->print(helpOnMain);
 
 //*Start with optional flags: replay, build, <match pattern>
 main(...)->begin
-  begin
-    actuallyRunning:=forcedRunningGravTasks;
-    occupiedIndexes:=occupiedIndexes.filter((key,value)->key in actuallyRunning).toMap;
-  end;
+  startIpcServer(STARTALL_IPC_ID,(x)->occupiedIndexes);
 
-  assertUniqueInstance;
   hasReplayFlag:=false;
   hasBuildFlag:=false;
   hasCloseFlag:=false;
@@ -127,11 +131,13 @@ main(...)->begin
   startedCount:=0;
 
   toStart:=(hasBuildFlag
-   ? buildableExe.getInner(3)
-   : gravExes)
+   ? exe_candiates
+   : gravExes.intersect(exe_candiates).toList)
   .filter((exe)->exe.matches(matchPattern))
   .filter((exe)->hasBuildFlag AND (exeIsMissing(exe) OR hasReplayFlag) OR fileExists(exe))
   .exeSorting;
+
+  occupiedIndexes:=forcedRunningGravTasks(exe_candiates);
 
   for execName in toStart do
     if userSignal==QUIT then void else
@@ -142,8 +148,7 @@ main(...)->begin
       wait:=waitForFreeCapacity;
       load:=getCpuLoadHistory(consoleWidth-length(name)-29);
       if hasBuildFlag then ensureExe(expandedFileName(execName),hasReplayFlag);
-      while (!peekFuture(wait) OR
-             check_running_instances>=MAX_GRAV_INSTANCES) AND (userSignal=='') do begin
+      while (checkStillRunning>=MAX_GRAV_INSTANCES OR !peekFuture(wait)) AND (userSignal=='') do begin
         tPrintD('Next:     ',name,"; CPU: ",BLOCKS[load].join,format('%3d',load.trailing),'%');
         load:=getCpuLoadHistory(consoleWidth-length(name)-29);
         sleep(0.1);
@@ -159,7 +164,11 @@ main(...)->begin
         end;
     end;
   tPrint(startedCount,' tasks started');
-  running:=forcedRunningGravTasks;
+  running:=forcedRunningGravTasks(exe_candiates).getInner(0);
   tPrint(running.size,' tasks are running: ',join("\n  "&sort(running)));
   tPrint('done');
 end;
+
+
+
+

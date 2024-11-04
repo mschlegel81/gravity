@@ -1,10 +1,22 @@
 BLOCKS:=[0..100].map((l)->[" ","▁","▂","▃","▄","▅","▆","▇","█"][floor(l*9/101)])|'!';
 QUIT:='quit';
+STARTALL_IPC_ID:='IPC_startall';
 
-datastore occupiedIndexes:=[].toMap;
-
-@MaxAge=10
+@MaxAge=60
 memoized gravExes->allFiles('.','grav*.exe').map(::expandedFileName).map(::systemSpecificFilename);
 
-@MaxAge=1
-memoized forcedRunningGravTasks->getTaskInfo.map((i)->gravExes[!pos(gravExes,i['commandLine']).isInfinite][0]).toSet;
+//EXE_PATTERN:=myPath.extractFileDirectory.systemSpecificFilename.replace('\','\\')&'\\.+\\grav\d\d\d\.exe';
+@MaxAge=5
+memoized forcedRunningGravTasks(candidates)->getTaskInfo.map((info)->info['commandLine']).map((cmdLine)->begin
+  exe:=candidates[!pos(candidates,cmdLine).isInfinite][0];
+  if exe.isVoid
+  then void
+  else begin
+    exe=>
+    cmdLine.split(' ').tail.filter((param)->param.matches('pos'))[0].orElse('pos=10000').replace('pos=','').softCast;
+  end;
+end).toMap;
+
+getOccupied->isIpcServerRunning(STARTALL_IPC_ID) ? sendIpcRequest(STARTALL_IPC_ID,[]) : forcedRunningGravTasks(gravExes);
+
+

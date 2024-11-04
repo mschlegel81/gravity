@@ -1,0 +1,25 @@
+#!C:\bin\mnh.exe -GUI
+memoized parseLog(filename)->filename.fileLineIterator.map((line)->line.split(['Step ',' done: ',' sub steps; M=','s; ']).tail.softCast).filter((l)->l.isNumericList(4) AND l[0].isInt and l[2].isInt).toList;
+
+@SuppressUnusedWarning
+SETUP:=begin
+["x0"=>-1,
+ "x1"=>1,
+ "y0"=>-1,
+ "y1"=>1,
+ "fontsize"=>10,
+ "preserveAspect"=>false,
+ "autoscaleX"=>true,
+ "autoscaleY"=>true,
+ "logscaleX"=>false,
+ "logscaleY"=>false,
+ "autoscaleFactor"=>1,
+ "axisStyleX"=>7,
+ "axisStyleY"=>7].toMap.setOptions;
+  freeConsole;
+end;
+
+main(logname,'cost' )->logname.parseLog.map((step,cost,subSteps,mass)->[step,cost]).plot;
+main(logname,'steps')->logname.parseLog.map((step,cost,subSteps,mass)->[step,subSteps]).plot;
+main(logname,'mass' )->logname.parseLog.map((step,cost,subSteps,mass)->[step,mass]).plot;
+

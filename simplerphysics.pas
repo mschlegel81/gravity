@@ -28,15 +28,39 @@ VAR cachedAttraction:T_vectorFieldFFT;
     attractionInitialized:boolean=false;
 
 PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
+  //FUNCTION calculateAttraction(CONST x,y:longint):T_2dVector;
+  //  VAR dx,dy:double;
+  //  begin
+  //    dx:=sqr(x+0.5)+sqr(y);
+  //    dy:=sqr(x)+sqr(y+0.5);
+  //    result[0]:=-straightAttraction(x+0.5,y)[0];
+  //    result[1]:=-straightAttraction(x,y+0.5)[1];
+  //    if (dx>SYS_SIZE*SYS_SIZE) then result[0]*=exp(-0.5*(dx*(1/SYS_SIZE*SYS_SIZE)-1));
+  //    if (dy>SYS_SIZE*SYS_SIZE) then result[1]*=exp(-0.5*(dy*(1/SYS_SIZE*SYS_SIZE)-1));
+  //  end;
   FUNCTION calculateAttraction(CONST x,y:longint):T_2dVector;
-    VAR dx,dy:double;
+    CONST DZ:array[0..2] of double=(-sqrt(3/5)/2, 0, sqrt(3/5)/2);
+          WZ:array[0..2] of double=(5/18,8/18,5/18);
+    VAR w:double;
     begin
-      dx:=sqr(x+0.5)+sqr(y);
-      dy:=sqr(x)+sqr(y+0.5);
-      result[0]:=-straightAttraction(x+0.5,y)[0];
-      result[1]:=-straightAttraction(x,y+0.5)[1];
-      if (dx>SYS_SIZE*SYS_SIZE) then result[0]*=exp(-0.5*(dx*(1/SYS_SIZE*SYS_SIZE)-1));
-      if (dy>SYS_SIZE*SYS_SIZE) then result[1]*=exp(-0.5*(dy*(1/SYS_SIZE*SYS_SIZE)-1));
+      w:=sqr(x)+sqr(y);
+      if w<SYS_SIZE*SYS_SIZE then w:=1
+      else begin
+        w:=sqrt(w)/SYS_SIZE-1;
+        if w>(SYMMETRIC_CONTINUATION+0.5) then exit(zeroVec);
+        w:=0.5+0.5*cos(w*pi/(SYMMETRIC_CONTINUATION+0.5));
+      end;
+      if w=1 then begin
+        result[0]:=-(WZ[0]*straightAttraction(x+0.5,y+DZ[0])[0]+
+                     WZ[1]*straightAttraction(x+0.5,y+DZ[1])[0]+
+                     WZ[2]*straightAttraction(x+0.5,y+DZ[2])[0]);
+        result[1]:=-(WZ[0]*straightAttraction(x+DZ[0],y+0.5)[1]+
+                     WZ[1]*straightAttraction(x+DZ[1],y+0.5)[1]+
+                     WZ[2]*straightAttraction(x+DZ[2],y+0.5)[1]);
+      end else begin
+        result[0]:=-w*straightAttraction(x+0.5,y)[0];
+        result[1]:=-w*straightAttraction(x,0.5+y)[1];
+      end;
     end;
 
   VAR ix,iy:longint;
@@ -295,17 +319,30 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
 
     dtRest:=dt;
     while dtRest>0 do begin
+
       staggeredAcceleration:=massFFT(value)*cachedAttraction;;
       simTime:=(timeStepIndex+1)*dt-dtRest;
       addBackgroundAcceleration(simTime/dt,staggeredAcceleration);
       dtEff:=calcTimeStep;
+      {$ifdef debugMode}
+      m:=0;
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do m+=value[i,j].mass;
+      log.append('Pre-Substep ').append(subStepsTaken).append(' done; mass=').append(m,3).append('; substep size=').append(dtEff,5).appendLineBreak;
+      {$endif}
+
       if (timeStepIndex<=1) and (subStepsTaken=0) and (dtEff>dt/1000) then dtEff:=dt/1000;
       regrowthAndAnnihilation(dtEff);
+      {$ifdef debugMode}
+      m:=0;
+      for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do m+=value[i,j].mass;
+      log.append('Annihilation').append(subStepsTaken).append(' done; mass=').append(m,3).append('; substep size=').append(dtEff,5).appendLineBreak;
+      {$endif}
       transport(dtEff);
       dtRest-=dtEff;
-      inc(subStepsTaken)
-    end;
+      inc(subStepsTaken);
 
+    end;
+    m:=0;
     for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do m+=value[i,j].mass;
     currTick:=GetTickCount64;
     log.append('Step ')

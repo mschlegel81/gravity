@@ -178,12 +178,15 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
         //Regrowing mass is added "with zero impulse"
         mass+=REGROWTH_FACTOR*dtEff;
         if (ANNIHILATION_FACTOR>0) and (mass>ANNIHILATION_THRESHOLD) then begin
-          p *= 1/mass;
-          a *= 1/mass;
-          dp*= 1/mass;
-          da*= 1/mass;
-          f:=ANNIHILATION_FACTOR*dtEff;
-          mass*=(1 + f*((ANNIHILATION_THRESHOLD-mass) + f*(sqr(mass) + ANNIHILATION_THRESHOLD*0.5*(ANNIHILATION_THRESHOLD - 3*mass))));
+          f:=1/mass;
+          p *=f;
+          a *=f;
+          dp*=f;
+          da*=f;
+          //f:=ANNIHILATION_FACTOR*dtEff;
+          //mass*=(1 + f*((ANNIHILATION_THRESHOLD-mass) + f*(sqr(mass) + ANNIHILATION_THRESHOLD*0.5*(ANNIHILATION_THRESHOLD - 3*mass))));
+          mass-=ANNIHILATION_FACTOR*dtEff*sqr(mass-ANNIHILATION_THRESHOLD);
+          if mass<ANNIHILATION_THRESHOLD then mass:=ANNIHILATION_THRESHOLD;
           p :=(p-totalDrift)*mass;
           a *=mass;
           dp*=mass;

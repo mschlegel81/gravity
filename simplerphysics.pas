@@ -212,6 +212,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
           y,vy,ay:double;
         end;
 
+        xBorder,yBorder:byte;
     begin
       //a = d²x/dt²
       //j = d³x/dt³ = (a(t_current)-a(t_prev))/(t_current-t_prev)
@@ -279,15 +280,15 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
         for ti:=floor(x0) to floor(x1+1) do begin
           //intersection of intervals [ti,ti+1] and [x0,x1]
           // = [max(ti,x0),min(x1,ti+1)] -> weight =
-          cellX0:=max(x0,ti);
-          cellX1:=min(x1,ti+1);
+          cellX0:=max(x0,ti);   if cellX0=ti   then xBorder:=1 else xBorder:=0;
+          cellX1:=min(x1,ti+1); if cellX1=ti+1 then xBorder+=2;
           wx:=cellX1-cellX0;
           f:=((cellX0+cellX1)*0.5-x0);
           new_p[0]:=f*vx1+vx0;
           new_a[0]:=f*ax1+ax0;
           if wx>0 then for tj:=floor(y0) to floor(y1+1) do begin
-            cellY0:=max(y0,tj);
-            cellY1:=min(y1,tj+1);
+            cellY0:=max(y0,tj);   if cellY0=tj   then yBorder:=1 else yBorder:=0;
+            cellY1:=min(y1,tj+1); if cellY1=tj+1 then yBorder+=2;
             wy:=cellY1-cellY0;
             wxy:=wx*wy;
             if wy>0 then with newState[ti and mask,tj and mask] do begin
@@ -297,10 +298,40 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
               mass+=density*wxy;
               p   +=new_p  *wxy;
               a   +=new_a  *wxy;
-              dp[0]+=0.5*vx1*wxy*wx;
-              dp[1]+=0.5*vy1*wxy*wy;
-              da[0]+=0.5*ax1*wxy*wx;
-              da[1]+=0.5*ay1*wxy*wy;
+              case xBorder of
+                1: //lower only
+                   begin
+                     dp[0]-=0.5*new_p[0]*wxy;
+                     da[0]-=0.5*new_a[0]*wxy;
+                   end;
+                2: //upper only
+                   begin
+                     dp[0]+=0.5*new_p[0]*wxy;
+                     da[0]+=0.5*new_a[0]*wxy;
+                   end;
+                3: //both
+                   begin
+                     dp[0]+=0.5*vx1*wxy;
+                     da[0]+=0.5*ax1*wxy;
+                   end;
+              end;
+              case yBorder of
+                1: //lower only
+                   begin
+                     dp[1]-=0.5*new_p[1]*wxy;
+                     da[1]-=0.5*new_a[1]*wxy;
+                   end;
+                2: //upper only
+                   begin
+                     dp[1]+=0.5*new_p[1]*wxy;
+                     da[1]+=0.5*new_a[1]*wxy;
+                   end;
+                3: //both
+                   begin
+                     dp[1]+=0.5*vy1*wxy;
+                     da[1]+=0.5*ay1*wxy;
+                   end;
+              end;
             end;
           end;
         end;

@@ -33,7 +33,7 @@ FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
     if range<8 then strength:=1 else strength:=sqr(8/range);
     if (timeStepIndex>=1667) and (timeStepIndex<3333) then strength:=-strength;
   end;
-  
+
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
   VAR d:double;
   begin

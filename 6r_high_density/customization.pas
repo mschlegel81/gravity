@@ -2,7 +2,7 @@ UNIT customization;
 INTERFACE
 USES vectors,commandLineHandling;
 CONST
-  SYMMETRIC_CONTINUATION=1+256 div SYS_SIZE;
+  SYMMETRIC_CONTINUATION=1;
   dt                    =0.05;
   GRID_SIZE             =1;
 
@@ -27,10 +27,10 @@ VAR range:double=0;
 
 FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
   begin
-    range:=64-64*cos(timeStepIndex*2*pi/1000);
-    result:=abs(range-lastRange)>1;
+    range:=(0.5-0.5*cos(timeStepIndex*2*pi/1000))*SYS_SIZE;
+    result:=abs(range-lastRange)>0.5;
     if result then lastRange:=range;
-    if range<32 then strength:=1 else strength:=sqr(32/range);
+    if range<32 then strength:=0.2 else strength:=0.2*sqr(32/range);
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;

@@ -25,8 +25,8 @@ FUNCTION reinitializeAttractionFactors(CONST timeStepIndex: longint): boolean;
   begin
     range:=8*(0.5-0.5*cos(timeStepIndex*2*pi/5000));
     REPULSION_LINEAR:=2*straightAttraction(0.5,0)[0];
-    if REPULSION_LINEAR<0 then REPULSION_LINEAR:=0;   
-    result:=true;    
+    if REPULSION_LINEAR<0 then REPULSION_LINEAR:=0;
+    result:=true;
   end;
 
 FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
@@ -35,7 +35,7 @@ FUNCTION straightAttraction(CONST rx,ry:double):T_2dVector;
     d:=sqrt(rx*rx+ry*ry);
 	if d>SYS_SIZE/2 then exit(zeroVec);
 	d:=sin(range*(0.5-2*d/SYS_SIZE)*pi)*
-          (0.5+0.5*cos(4*pi*d/SYS_SIZE))/d*sqr(32/SYS_SIZE);    
+          (0.5+0.5*cos(4*pi*d/SYS_SIZE))/d*sqr(32/SYS_SIZE);
     result[0]:=rx*d;
     result[1]:=ry*d;
   end;

@@ -8,11 +8,8 @@ watcher(filename:String)->{begin
     timedOut:=false;
     trail:=[];
     localAsync({begin
-      begin
-        maxSleep:=scriptTime+10;
-        while not fileExists(filename) and scriptTime<maxSleep do sleep(0.01);
-      end;
-      it:=fileLineIterator(filename,60);
+      //it:=fileLineIterator(filename,60);
+      it:=try(::fileLineIterator,[filename,60]) orElse {void};
       n:=void;
       while !isVoid(n:=it()) do begin
         trail:=
@@ -39,8 +36,8 @@ main->begin
   linesTotal:=isGuiStarted ? 50: console_size[0]-1 ;
   cpuWidth  :=isGuiStarted ? 50: console_size[1]-10;
 
-  formatUnderline:=(line:String)->"\e[4m"&line&repeatString(" ",console_size[1]-line.length)&"\e[0m";
-  formatFullWidth:=(line:String)->        line&repeatString(" ",console_size[1]-line.length);
+  formatUnderline:=(line:String)->"\e[4m"&copy(line&repeatString(" ",console_size[1]-line.length),0,console_size[1])&"\e[0m";
+  formatFullWidth:=(line:String)->        copy(line&repeatString(" ",console_size[1]-line.length),0,console_size[1]);
 
   localAsync({begin answer:=''; while answer!=QUIT do begin
     answer:=ask('?',[QUIT,'+','-'],false);

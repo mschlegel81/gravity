@@ -1,5 +1,6 @@
 #!C:\bin\mnh.exe -GUI
-memoized parseLog(filename)->filename.fileLineIterator.map((line)->line.split(['Step ',' done: ',' sub steps; M=','s; ']).tail.softCast).filter((l)->l.isNumericList(4) AND l[0].isInt and l[2].isInt).toList;
+memoized parseLog(filename)->filename.fileLineIterator.map((line)->line.split(['Step ',' done: ',' sub steps; M=','s; ','; E=']).tail.softCast)
+.filter((l)->l.isNumericList(5) AND l[0].isInt and l[2].isInt).toList;
 
 @SuppressUnusedWarning
 SETUP:=begin
@@ -19,7 +20,9 @@ SETUP:=begin
   freeConsole;
 end;
 
-main(logname,'cost' )->logname.parseLog.map((step,cost,subSteps,mass)->[step,cost]).plot;
-main(logname,'steps')->logname.parseLog.map((step,cost,subSteps,mass)->[step,subSteps]).plot;
-main(logname,'mass' )->logname.parseLog.map((step,cost,subSteps,mass)->[step,mass]).plot;
+
+main(logname,'cost' )->logname.parseLog.map((step,cost,subSteps,mass,energy)->[step,cost]).plot;
+main(logname,'steps')->logname.parseLog.map((step,cost,subSteps,mass,energy)->[step,subSteps]).plot;
+main(logname,'mass' )->logname.parseLog.map((step,cost,subSteps,mass,energy)->[step,mass]).plot;
+main(logname,'e'    )->logname.parseLog.map((step,cost,subSteps,mass,energy)->[step,energy]).plot;
 

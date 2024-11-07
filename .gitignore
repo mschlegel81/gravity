@@ -16,3 +16,4 @@ grav*.png
 
 /startall.datastore1
 *.replay
+/customization.pas

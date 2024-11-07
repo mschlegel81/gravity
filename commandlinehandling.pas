@@ -21,7 +21,7 @@ FUNCTION appTitle:string;
 TYPE
   T_log=class
     private
-      logHandle:textFile;
+      logHandle:text;
       //Private because it is a singleton
       CONSTRUCTOR create;
       DESTRUCTOR destroy;
@@ -91,9 +91,13 @@ FUNCTION log: T_log;
 { T_log }
 
 CONSTRUCTOR T_log.create;
+  VAR fileName: string;
   begin
-    assign(logHandle,ChangeFileExt(paramStr(0),'.log'));
-    rewrite(logHandle);
+    fileName:=ChangeFileExt(paramStr(0),'.log');
+    assign(logHandle,fileName);
+    if fileExists(fileName)
+    then system.append(logHandle)
+    else rewrite(logHandle);
   end;
 
 DESTRUCTOR T_log.destroy;

@@ -39,7 +39,7 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
   //    if (dy>SYS_SIZE*SYS_SIZE) then result[1]*=exp(-0.5*(dy*(1/SYS_SIZE*SYS_SIZE)-1));
   //  end;
   FUNCTION calculateAttraction(CONST x,y:longint):T_2dVector;
-    CONST DZ:array[0..2] of double=(-sqrt(3/5)/2, 0, sqrt(3/5)/2);
+    CONST dz:array[0..2] of double=(-sqrt(3/5)/2, 0, sqrt(3/5)/2);
           WZ:array[0..2] of double=(5/18,8/18,5/18);
     VAR w:double;
     begin
@@ -51,12 +51,12 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
         w:=0.5+0.5*cos(w*pi/(SYMMETRIC_CONTINUATION+0.5));
       end;
       if w=1 then begin
-        result[0]:=-(WZ[0]*straightAttraction(x+0.5,y+DZ[0])[0]+
-                     WZ[1]*straightAttraction(x+0.5,y+DZ[1])[0]+
-                     WZ[2]*straightAttraction(x+0.5,y+DZ[2])[0]);
-        result[1]:=-(WZ[0]*straightAttraction(x+DZ[0],y+0.5)[1]+
-                     WZ[1]*straightAttraction(x+DZ[1],y+0.5)[1]+
-                     WZ[2]*straightAttraction(x+DZ[2],y+0.5)[1]);
+        result[0]:=-(WZ[0]*straightAttraction(x+0.5,y+dz[0])[0]+
+                     WZ[1]*straightAttraction(x+0.5,y+dz[1])[0]+
+                     WZ[2]*straightAttraction(x+0.5,y+dz[2])[0]);
+        result[1]:=-(WZ[0]*straightAttraction(x+dz[0],y+0.5)[1]+
+                     WZ[1]*straightAttraction(x+dz[1],y+0.5)[1]+
+                     WZ[2]*straightAttraction(x+dz[2],y+0.5)[1]);
       end else begin
         result[0]:=-w*straightAttraction(x+0.5,y)[0];
         result[1]:=-w*straightAttraction(x,0.5+y)[1];
@@ -129,8 +129,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
       simTime:double;
       totalDrift:T_2dVector;
   FUNCTION calcTimeStep:double;
-    CONST mask=SYS_SIZE-1;
-    VAR i,j,ti,tj:longint;
+    VAR i,j:longint;
         maxJerk:double=epsilon;
         jerk,f:double;
         maxSpeed:double=epsilon;
@@ -276,13 +275,13 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
               case xBorder of
                 1: //lower only
                    begin
-                     dp[0]-=0.5*new_p[0]*wxy;
-                     da[0]-=0.5*new_a[0]*wxy;
+                     dp[0]+=0.5*(-new_p[0]*(1-wx)+vx1*wx)*wxy;
+                     da[0]+=0.5*(-new_a[0]*(1-wx)+ax1*wx)*wxy;
                    end;
                 2: //upper only
                    begin
-                     dp[0]+=0.5*new_p[0]*wxy;
-                     da[0]+=0.5*new_a[0]*wxy;
+                     dp[0]+=0.5*( new_p[0]*(1-wx)+vx1*wx)*wxy;
+                     da[0]+=0.5*( new_a[0]*(1-wx)+ax1*wx)*wxy;
                    end;
                 3: //both
                    begin
@@ -293,13 +292,13 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
               case yBorder of
                 1: //lower only
                    begin
-                     dp[1]-=0.5*new_p[1]*wxy;
-                     da[1]-=0.5*new_a[1]*wxy;
+                     dp[1]+=0.5*(-new_p[1]*(1-wy)+vy1*wy)*wxy;
+                     da[1]+=0.5*(-new_a[1]*(1-wy)+ay1*wy)*wxy;
                    end;
                 2: //upper only
                    begin
-                     dp[1]+=0.5*new_p[1]*wxy;
-                     da[1]+=0.5*new_a[1]*wxy;
+                     dp[1]+=0.5*( new_p[1]*(1-wy)+vy1*wy)*wxy;
+                     da[1]+=0.5*( new_a[1]*(1-wy)+ay1*wy)*wxy;
                    end;
                 3: //both
                    begin
@@ -318,6 +317,7 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
       dtEff:double;
       i,j:longint;
       m:double=0;
+      Ekin:double=0;
       currTick:qword;
   begin
     ensureAttractionFactors(timeStepIndex);
@@ -349,7 +349,11 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
 
     end;
     m:=0;
-    for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do m+=value[i,j].mass;
+    Ekin:=0;
+    for i:=0 to SYS_SIZE-1 do for j:=0 to SYS_SIZE-1 do begin
+      m+=value[i,j].mass;
+      if value[i,j].mass>0 then Ekin+=(sqr(value[i,j].p[0])+sqr(value[i,j].p[1]))/value[i,j].mass;
+    end;
     currTick:=GetTickCount64;
     log.append('Step ')
        .append(timeStepIndex)
@@ -358,9 +362,11 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
        .append('s; ')
        .append(subStepsTaken)
        .append(' sub steps; M=')
-       .append(m,3);
+       .append(m,3)
+       .append('; E=')
+       .append(Ekin,3)
 //    if capping then log.append('(cap: ').append(minCapFactor,3).append(')');
-    log.appendLineBreak;
+       .appendLineBreak;
     lastTick:=currTick;
   end;
 

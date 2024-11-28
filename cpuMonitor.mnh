@@ -36,7 +36,7 @@ end;
 mutable lastQueried:=0;
 mutable hasKillRequest:=false;
 
-THRESHOLD_CAPACITY:=75;
+THRESHOLD_CAPACITY:=50;
 
 handleRequest(request)->begin
   dontStartBefore:=scriptTime;

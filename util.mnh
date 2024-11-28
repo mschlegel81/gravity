@@ -17,6 +17,6 @@ memoized forcedRunningGravTasks(candidates)->getTaskInfo.map((info)->info['comma
   end;
 end).toMap;
 
-getOccupied->isIpcServerRunning(STARTALL_IPC_ID) ? sendIpcRequest(STARTALL_IPC_ID,[]) : forcedRunningGravTasks(gravExes);
+getOccupied->isIpcServerRunning(STARTALL_IPC_ID) ? try(::sendIpcRequest,[STARTALL_IPC_ID,[]]) orElse forcedRunningGravTasks(gravExes) : forcedRunningGravTasks(gravExes);
 
 

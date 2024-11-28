@@ -93,8 +93,8 @@ PROCEDURE ensureAttractionFactors(CONST stepIndex:longint);
           temp+=calculateAttraction(ix+symX*SYS_SIZE,iy+symY*SYS_SIZE);
         attractionField[ix,iy]:=temp;
       end;
-      addSymmetricPressureTerm(0,0,0.8);
-      addSymmetricPressureTerm(0,1,0.1);
+      addSymmetricPressureTerm(0,0,11/12);
+      addSymmetricPressureTerm(0,1, 1/24);
       cachedAttraction:=accelFFT(attractionField);
     end;
     attractionInitialized:=true;
@@ -273,38 +273,14 @@ FUNCTION T_cellSystem.doMacroTimeStep(CONST timeStepIndex:longint): boolean;
               p   +=new_p  *wxy;
               a   +=new_a  *wxy;
               case xBorder of
-                1: //lower only
-                   begin
-                     dp[0]+=0.5*(-new_p[0]*(1-wx)+vx1*wx)*wxy;
-                     da[0]+=0.5*(-new_a[0]*(1-wx)+ax1*wx)*wxy;
-                   end;
-                2: //upper only
-                   begin
-                     dp[0]+=0.5*( new_p[0]*(1-wx)+vx1*wx)*wxy;
-                     da[0]+=0.5*( new_a[0]*(1-wx)+ax1*wx)*wxy;
-                   end;
-                3: //both
-                   begin
-                     dp[0]+=0.5*vx1*wxy;
-                     da[0]+=0.5*ax1*wxy;
-                   end;
+                1: begin dp[0]+=0.5*(-new_p[0]*(1-wx)+vx1*wx)*wxy; da[0]+=0.5*(-new_a[0]*(1-wx)+ax1*wx)*wxy; end;
+                2: begin dp[0]+=0.5*( new_p[0]*(1-wx)+vx1*wx)*wxy; da[0]+=0.5*( new_a[0]*(1-wx)+ax1*wx)*wxy; end;
+                3: begin dp[0]+=0.5                  *vx1    *wxy; da[0]+=0.5                  *ax1    *wxy; end;
               end;
               case yBorder of
-                1: //lower only
-                   begin
-                     dp[1]+=0.5*(-new_p[1]*(1-wy)+vy1*wy)*wxy;
-                     da[1]+=0.5*(-new_a[1]*(1-wy)+ay1*wy)*wxy;
-                   end;
-                2: //upper only
-                   begin
-                     dp[1]+=0.5*( new_p[1]*(1-wy)+vy1*wy)*wxy;
-                     da[1]+=0.5*( new_a[1]*(1-wy)+ay1*wy)*wxy;
-                   end;
-                3: //both
-                   begin
-                     dp[1]+=0.5*vy1*wxy;
-                     da[1]+=0.5*ay1*wxy;
-                   end;
+                1: begin dp[1]+=0.5*(-new_p[1]*(1-wy)+vy1*wy)*wxy; da[1]+=0.5*(-new_a[1]*(1-wy)+ay1*wy)*wxy; end;
+                2: begin dp[1]+=0.5*( new_p[1]*(1-wy)+vy1*wy)*wxy; da[1]+=0.5*( new_a[1]*(1-wy)+ay1*wy)*wxy; end;
+                3: begin dp[1]+=0.5*                  vy1    *wxy; da[1]+=0.5*                  ay1    *wxy; end;
               end;
             end;
           end;
